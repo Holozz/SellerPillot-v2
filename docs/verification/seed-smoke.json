@@ -1,0 +1,17 @@
+{
+  "kind": "synthetic-business-data",
+  "seed": 42,
+  "tag": "e3a1f6b55b",
+  "as_of": "2026-10-23T03:00:00",
+  "orders": 10000,
+  "stores": [
+    1,
+    2,
+    3
+  ],
+  "products_per_store": 100,
+  "username": "demo",
+  "elapsed_seconds": 0.576,
+  "database_dialect": "sqlite",
+  "scope": "仅为合成数据，不代表真实交易量；不构成性能测试结果"
+}

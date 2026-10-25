@@ -1,0 +1,24 @@
+.operations-panel { margin-top: 30px; background: white; border: 1px solid var(--line); border-radius: 2px; padding: 28px; }
+.operations-form { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 14px; margin: 20px 0 14px; }
+.operations-form label { display: grid; gap: 8px; flex: 1; min-width: 150px; font-size: 13px; }
+.operations-form input, .operations-form select { width: 100%; min-width: 0; min-height: 44px; border: 1px solid #acbdc8; border-radius: 2px; background: white; color: inherit; padding: 8px 10px; font: inherit; }
+.operations-form .primary-button { width: auto; padding: 0 18px; min-height: 44px; }
+.operations-form select:focus-visible, .operations-table:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+.operations-context { margin: 26px 0 20px; padding-top: 18px; border-top: 1px solid var(--line); color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
+.operations-panel h3 { margin: 24px 0 14px; font-size: 16px; }
+.operations-panel h3 small { display: inline-block; font-size: 12px; font-weight: 400; color: var(--muted); margin-left: 8px; }
+.operations-table { max-width: 100%; overflow-x: auto; border: 1px solid var(--line); border-radius: 2px; }
+.operations-table table { width: 100%; border-collapse: collapse; text-align: left; font-size: 13px; }
+.operations-table th { background: #f0f3f8; font-weight: 600; }
+.operations-table th, .operations-table td { padding: 12px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.operations-table tbody tr:last-child td { border-bottom: 0; }
+.operations-table .operations-order-id { min-width: 130px; max-width: 240px; white-space: normal; overflow-wrap: anywhere; }
+.operations-warning { background: #fff4df; color: #815315; border-left: 3px solid #bd8a35; padding: 10px 12px; font-size: 13px; }
+.operations-pagination { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 16px; }
+.operations-pagination span { color: var(--muted); font-size: 12px; text-align: center; }
+@media (max-width: 760px) {
+  .operations-panel { padding: 20px 16px; }
+  .operations-form label { flex-basis: calc(50% - 14px); min-width: 120px; }
+  .operations-form .primary-button { width: 100%; }
+  .operations-pagination .quiet-button { padding: 8px 10px; }
+}

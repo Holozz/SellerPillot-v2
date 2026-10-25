@@ -1,0 +1,10 @@
+:root {
+  font-family: "Microsoft YaHei UI", "Microsoft YaHei", "Segoe UI", sans-serif;
+  color: #172b46;
+  background: #f0f2f5;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  --muted: #596a7f;
+  --line: #c7cfd9;
+  --accent: #2457e6;
+}
