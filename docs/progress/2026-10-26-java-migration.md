@@ -1,6 +1,6 @@
 # SellerPilot Java 改造进度（按目录）
 
-整理日期：2026-10-26。汇总 Java 改造实现、验证和续做结果，详列待完成项。
+整理日期：2026-10-26，后于 2026-10-27 补记 Python 业务后端退役。汇总 Java 改造实现、验证和续做结果，详列待完成项。
 
 ## 目录总览
 
@@ -20,7 +20,15 @@
 | `docs/` | 改造计划补充、实施记录、简历目标稿与本目录进度汇总 | 简历稿已用实测数字更新，标明合成数据、单机负载和生产边界 |
 | `.github/workflows/verify.yml` | Java MySQL/Redis 测试 job、Java 模式前端构建 | 仅配置已写，未推送或运行远程 Actions |
 | 根目录 `README.md`、`.env.java.example`、`.gitignore` | Java 运行入口、环境模板、密钥与构建产物忽略规则 | `.env.java`、模拟账号凭据、数据库数据与构建缓存不提交 |
-| 原 `backend/` | 保留 Python 业务与 AI 参考实现 | 已有 SHA 核对记录显示 61 个 Python 后端文件未改变；Python 证据与 Java 证据分别解释 |
+| 原 `backend/` | Python 在线业务后端、AI/任务代码及旧部署配置已从当前工作树退役 | 迁移前源码仍可从 Git 历史提交 `967734b` 之前的版本检出；Java 验证工具仅保留必要的 Python 脚本 |
+
+## 2026-10-27 后续清理：Python 业务系统退役
+
+根据后续项目定位决定，当前工作树不再保留 Python 在线后端或双模式前端。移除 `backend/`、旧 Alembic/Compose/Docker 配置、旧 Python 检索评测与查询实验，以及仅供旧业务工作区使用的前端组件和浏览器流程。CI 现在只运行 Java 后端验证与 Java 前端构建。
+
+保留 `experiments/java-seed.py`、`java-cache-fault.py` 和 `java-evidence.py`：它们仅用于 Java 合成数据、双 JVM/Redis 故障和证据采集。依赖独立列在 `experiments/requirements.txt`，不再安装旧业务后端的整套依赖。证据采集脚本把迁移前 Python SHA 清单作为历史基线处理，分别报告退役文件与仍在工作树中的改动文件。
+
+本次未删除 Docker 数据卷、`.env`/`.env.java`、`.data/` 中的本地凭据和模拟数据，也未改动用户正在编辑的简历目标稿。迁移前源码仍可从 Git 历史检出。本轮仅运行前端生产构建、Python 工具语法检查和 Compose 配置解析；没有重跑 Java 测试套件或 Playwright 流程。
 
 ## 后端核心机制
 

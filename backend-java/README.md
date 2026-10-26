@@ -2,7 +2,7 @@
 
 卖家的订单散落在导出文件中，经营统计容易混用币种、重复计算订单；多人确认同一修改还可能覆盖已更新的商品。本模块用统一查询口径、版本缓存和数据库事务解决这三条主链路。
 
-当前 Java 范围：账号、店铺与成员权限、商品、订单/明细导入、经营查询、人工审批、执行回执和审计。Python 的 RAG、Agent、任务队列保留在原目录，Java 页面不调用这些接口。这里不代表电商平台连接器或生产运营系统已经上线。
+当前 Java 范围：账号、店铺与成员权限、商品、订单/明细导入、经营查询、人工审批、执行回执和审计。当前 Java 版本不包含 Agent/RAG 和异步任务。这里不代表电商平台连接器或生产运营系统已经上线。
 
 ## 技术与边界
 
@@ -30,13 +30,12 @@ docker compose --env-file .env.java -f compose.java.yaml up -d --wait mysql redi
 ```powershell
 cd frontend
 npm ci
-$env:VITE_BACKEND='java'
 npm run dev -- --port 5191
 ```
 
 访问 http://127.0.0.1:5191，自行注册并创建店铺。API 为 http://127.0.0.1:8081，健康检查 `/actuator/health`。运行脚本读取被 Git 忽略的 `.env.java`，不会覆盖已有密钥。打包前先停止正在使用同名 jar 的本地 API，否则 Windows 会因文件锁而无法重新打包。
 
-Java 使用独立 Compose 项目、MySQL 3310 / `sellerpilot_java`、Redis 6383；测试库为 `sellerpilot_java_test`、Redis DB9。不会迁移或清空原 Python 库。默认初始化脚本按账号 `sellerpilot` 授权；自定义账号时需同步修改初始化授权。
+Java 使用独立 Compose 项目、MySQL 3310 / `sellerpilot_java`、Redis 6383；测试库为 `sellerpilot_java_test`、Redis DB9。Java 使用独立的数据库 schema，不会触碰其他现存数据库数据。默认初始化脚本按账号 `sellerpilot` 授权；自定义账号时需同步修改初始化授权。
 
 ## 主要 API
 
@@ -64,7 +63,7 @@ Java 使用独立 Compose 项目、MySQL 3310 / `sellerpilot_java`、Redis 6383�
 
 订单 CSV 表头为 `external_order_id,ordered_at,status,currency`；明细 CSV 表头为 `external_order_id,line_no,sku,quantity,unit_price,refund_amount`。先创建商品、导入订单，再导入明细；字段顺序严格，日期需带时区，文件内业务键不可重复。前端提供模板和错误反馈。
 
-400/422 表示请求不合法，401 未登录，403 无操作能力，404 不可见或不存在，409 版本/幂等/约束冲突，410 旧审批入口退役，500 数据库操作失败，503 聚合/重建繁忙。Python 的 RAG/任务与旧分析接口不在 Java 兼容范围；仅复用当前 Java 页面需要的基础路由。
+400/422 表示请求不合法，401 未登录，403 无操作能力，404 不可见或不存在，409 版本/幂等/约束冲突，410 旧审批入口退役，500 数据库操作失败，503 聚合/重建繁忙。旧 Python 业务后端已从当前工作树退役；此处只说明 Java 当前提供的路由。
 
 也可以将前后端一并容器化（先停止本地 8081/5191 进程）：
 
@@ -83,13 +82,23 @@ docker compose --env-file .env.java -f compose.java.yaml --profile app up -d --b
 
 代理端口按实际配置填写；这些变量只影响当前终端及其子进程。
 
+## Java 实验 Python 工具
+
+在线业务后端为 Java。仅当运行 `experiments/java-*.py` 的合成数据、双 JVM/Redis 故障或证据采集实验时，需要 Python；依赖与业务代码隔离：
+
+```powershell
+py -3.12 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r experiments/requirements.txt
+```
+
+脚本依赖 `.env.java` 和 `.data/java-bench/` 中本地生成的模拟凭据。它们不提供 Python HTTP 服务，也不连接外部商家平台。
+
 ## 可复现验证
 
 ```powershell
 # 会清空独立 Java 测试库的应用表，不接受其他数据库名
 ./backend-java/scripts/test.ps1
 cd frontend
-$env:VITE_BACKEND='java'
 $env:PLAYWRIGHT_BASE_URL='http://127.0.0.1:5191'
 $env:CHROME_PATH='C:\Program Files\Google\Chrome\Application\chrome.exe'
 npx playwright test

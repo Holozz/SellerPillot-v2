@@ -29,10 +29,12 @@ def main():
             response=client.get('http://127.0.0.1:8081/actuator/metrics/'+name,headers=headers)
             if response.status_code==200:metrics[name]=response.json()['measurements']
         context['instance_8081_metrics_at_collection']=metrics
-    baseline=json.loads((OUT/'python-baseline.json').read_text());changed=[p for p,h in baseline['files'].items() if digest(ROOT/p)!=h]
-    python_files={p:h for p,h in baseline['files'].items() if p.startswith('backend/')}
-    python_changed=[p for p in changed if p in python_files]
-    context['python_source_baseline']={'files_checked':len(python_files),'changed':python_changed,'other_baseline_changes':changed};assert not python_changed,python_changed
+    baseline=json.loads((OUT/'python-baseline.json').read_text())
+    baseline_files=baseline['files']
+    present={p:h for p,h in baseline_files.items() if (ROOT/p).is_file()}
+    retired=sorted(set(baseline_files)-set(present))
+    changed=[p for p,h in present.items() if digest(ROOT/p)!=h]
+    context['pre_migration_python_baseline']={'baseline_commit':baseline['baseline_commit'],'baseline_files':len(baseline_files),'files_still_present':len(present),'retired_files':len(retired),'changed_files_still_present':changed,'meaning':'historical baseline only; retired and changed files are expected after Java consolidation'}
     reports=OUT/'junit';reports.mkdir(exist_ok=True)
     for source in (ROOT/'backend-java/target/surefire-reports').glob('*'):
         if source.suffix not in ('.txt','.xml'):continue
@@ -42,13 +44,13 @@ def main():
         shutil.copyfile(source,reports/source.name)
     (OUT/'environment.json').write_text(json.dumps(context,indent=2))
     manifest={}
-    for base in ('backend-java/src','backend-java/scripts','frontend/src/features/java','frontend/e2e','deploy/java'):
+    for base in ('backend-java/src','backend-java/scripts','frontend/src','frontend/e2e','deploy/java'):
         for path in (ROOT/base).rglob('*'):
             if path.is_file():manifest[path.relative_to(ROOT).as_posix()]=digest(path)
-    for relative in ('backend-java/pom.xml','backend-java/Dockerfile','compose.java.yaml','frontend/Dockerfile','frontend/src/app/App.tsx','frontend/vite.config.ts','.github/workflows/verify.yml'):
+    for relative in ('backend-java/pom.xml','backend-java/Dockerfile','compose.java.yaml','frontend/Dockerfile','frontend/src/app/App.tsx','frontend/vite.config.ts','frontend/playwright.config.ts','frontend/nginx.conf','.github/workflows/verify.yml'):
         manifest[relative]=digest(ROOT/relative)
     for path in (ROOT/'experiments').glob('java-*'):
         if path.is_file():manifest[path.relative_to(ROOT).as_posix()]=digest(path)
     (OUT/'source-manifest.json').write_text(json.dumps({'base_commit':baseline['baseline_commit'],'state':'uncommitted workspace, file hashes identify tested code','files':manifest},indent=2))
-    print(json.dumps({'python_unchanged':len(python_files),'source_files':len(manifest),'mysql':context['mysql']}))
+    print(json.dumps({'pre_migration_baseline_files':len(baseline_files),'source_files':len(manifest),'mysql':context['mysql']}))
 if __name__=='__main__':main()

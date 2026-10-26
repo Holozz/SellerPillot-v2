@@ -10,7 +10,6 @@ build/
 dist/
 .env
 .env.*
-!.env.example
 node_modules/
 .idea/
 .vscode/
@@ -24,4 +23,3 @@ backend-java/target/
 !.env.java.example
 frontend/test-results/
 frontend/playwright-report/
-

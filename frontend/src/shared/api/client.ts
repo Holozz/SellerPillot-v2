@@ -27,7 +27,7 @@ export async function request<T>(path: string, options: RequestInit = {}): Promi
   }
   if (!response.ok) {
     const payload = await response.json().catch(() => null)
-    // FastAPI普通错误的detail是字符串；CSV错误是包含message/errors的对象。
+    // Java API普通错误的message是字符串；CSV错误会包含message/errors。
     const detail = payload?.detail
     const message = typeof detail === 'string' ? detail
       : typeof detail?.message === 'string' ? detail.message
