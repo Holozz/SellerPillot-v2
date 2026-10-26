@@ -17,6 +17,11 @@ node_modules/
 *.log
 .tmp/
 .data/
+.m2/
+.tools/
+backend-java/target/
+.env.java
+!.env.java.example
 frontend/test-results/
 frontend/playwright-report/
 

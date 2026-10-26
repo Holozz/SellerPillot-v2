@@ -1,0 +1,51 @@
+server:
+  address: ${JAVA_BIND_ADDRESS:127.0.0.1}
+  port: ${JAVA_PORT:8081}
+  tomcat:
+    threads:
+      max: 64
+      min-spare: 4
+    accept-count: 128
+spring:
+  jackson:
+    deserialization:
+      fail-on-unknown-properties: true
+  application:
+    name: sellerpilot-java
+  datasource:
+    url: ${JAVA_MYSQL_URL:jdbc:mysql://127.0.0.1:3310/sellerpilot_java?connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true}
+    username: ${JAVA_DB_USER:sellerpilot}
+    password: ${JAVA_DB_PASSWORD}
+    hikari:
+      maximum-pool-size: 12
+      minimum-idle: 2
+      connection-timeout: 2000
+  data:
+    redis:
+      host: ${JAVA_REDIS_HOST:127.0.0.1}
+      port: ${JAVA_REDIS_PORT:6383}
+      database: ${JAVA_REDIS_DB:0}
+      connect-timeout: 200ms
+      timeout: 200ms
+  servlet:
+    multipart:
+      max-file-size: 5MB
+      max-request-size: 6MB
+mybatis:
+  configuration:
+    map-underscore-to-camel-case: true
+    default-statement-timeout: 5
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus,metrics
+  endpoint:
+    health:
+      show-details: never
+sellerpilot:
+  jwt-secret: ${JAVA_JWT_SECRET}
+  cache:
+    enabled: ${JAVA_CACHE_ENABLED:false}
+    ttl-seconds: ${JAVA_CACHE_TTL:120}
+    aggregation-permits: ${JAVA_AGGREGATION_PERMITS:2}

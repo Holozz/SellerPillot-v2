@@ -1,0 +1,19 @@
+{
+  "scope": "independent test schema only",
+  "error_code": 1553,
+  "reason": "InnoDB reused V3 covering index for foreign key; dropping it requires replacement FK index first",
+  "failed_record": [
+    {
+      "version": "4",
+      "success": 0,
+      "description": "correct item covering prefix"
+    }
+  ],
+  "indexes_before_retry": [
+    "PRIMARY",
+    "ix_items_metrics",
+    "order_id",
+    "store_id_2"
+  ],
+  "recovery": "No DDL had succeeded. Removed only failed V4 history entry in sellerpilot_java_test; corrected unapplied migration will rerun."
+}

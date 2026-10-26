@@ -4,6 +4,7 @@ import type { Store, User } from '../shared/types'
 import AuthForm from '../features/auth/AuthForm'
 import StoreManager from '../features/stores/StoreManager'
 import StoreWorkspace from './StoreWorkspace'
+import JavaWorkspace from '../features/java/JavaWorkspace'
 
 export default function App() {
   const [token, setToken] = useState(() => sessionStorage.getItem(TOKEN_KEY) ?? '')
@@ -58,7 +59,9 @@ export default function App() {
       {loading && <p className="hint" role="status">正在加载账号与店铺…</p>}
       {user && <StoreManager stores={stores} selectedId={selectedId} onSelect={setSelectedId}
         onCreated={handleStoreCreated} onSessionExpired={handleSessionExpired} />}
-      {selectedStore && user && <StoreWorkspace key={`${user.id}:${selectedStore.id}`} store={selectedStore} onSessionExpired={handleSessionExpired} />}
+      {selectedStore && user && (import.meta.env.VITE_BACKEND === 'java'
+        ? <JavaWorkspace key={`${user.id}:${selectedStore.id}`} store={selectedStore} onSessionExpired={handleSessionExpired} />
+        : <StoreWorkspace key={`${user.id}:${selectedStore.id}`} store={selectedStore} onSessionExpired={handleSessionExpired} />)}
     </section>}</main>
     <footer>SellerPilot<span>数据先核对，修改需确认。</span></footer>
   </div>

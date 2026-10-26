@@ -1,6 +1,37 @@
 name: verify
 on: [push, pull_request]
 jobs:
+  java:
+    runs-on: ubuntu-latest
+    env:
+      JAVA_DB_USER: root
+      JAVA_DB_PASSWORD: ci-only-password
+      JAVA_JWT_SECRET: ci-only-secret-at-least-thirty-two-bytes
+      JAVA_IT_MYSQL_URL: jdbc:mysql://127.0.0.1:3306/sellerpilot_java_test?connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true
+      JAVA_REDIS_PORT: 6383
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: ci-only-password
+          MYSQL_DATABASE: sellerpilot_java_test
+        ports: [3306:3306]
+        options: --health-cmd="mysqladmin ping -pci-only-password" --health-interval=5s --health-retries=30
+      redis:
+        image: redis:7.4-alpine
+        ports: [6383:6379]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: '21', cache: maven, cache-dependency-path: backend-java/pom.xml}
+      - run: mvn -B -f backend-java/pom.xml verify
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: java-evidence
+          path: |
+            backend-java/target/surefire-reports/
+            docs/verification/java/
   contracts:
     runs-on: ubuntu-latest
     env:
@@ -46,3 +77,6 @@ jobs:
         working-directory: frontend
       - run: npm run build
         working-directory: frontend
+      - run: npm run build
+        working-directory: frontend
+        env: {VITE_BACKEND: java}

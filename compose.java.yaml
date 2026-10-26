@@ -1,0 +1,50 @@
+name: sellerpilot-java
+services:
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_DATABASE: sellerpilot_java
+      MYSQL_USER: ${JAVA_DB_USER:-sellerpilot}
+      MYSQL_PASSWORD: ${JAVA_DB_PASSWORD:?set JAVA_DB_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${JAVA_MYSQL_ROOT_PASSWORD:?set JAVA_MYSQL_ROOT_PASSWORD}
+    command: [--character-set-server=utf8mb4, --collation-server=utf8mb4_0900_as_cs, --default-time-zone=+00:00]
+    ports: ["127.0.0.1:3310:3306"]
+    volumes:
+      - java_mysql_data:/var/lib/mysql
+      - ./deploy/java/mysql-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: [CMD-SHELL, 'MYSQL_PWD="$$MYSQL_PASSWORD" mysql -h127.0.0.1 -u"$$MYSQL_USER" sellerpilot_java -e "SELECT 1"']
+      interval: 5s
+      timeout: 3s
+      retries: 30
+  redis:
+    image: redis:7.4-alpine
+    command: [redis-server, --maxmemory, 128mb, --maxmemory-policy, allkeys-lru]
+    ports: ["127.0.0.1:6383:6379"]
+    healthcheck: {test: [CMD, redis-cli, ping], interval: 5s, retries: 20}
+  api:
+    profiles: [app]
+    build: backend-java
+    environment:
+      JAVA_MYSQL_URL: jdbc:mysql://mysql:3306/sellerpilot_java?connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true
+      JAVA_BIND_ADDRESS: 0.0.0.0
+      JAVA_DB_USER: ${JAVA_DB_USER:-sellerpilot}
+      JAVA_DB_PASSWORD: ${JAVA_DB_PASSWORD}
+      JAVA_JWT_SECRET: ${JAVA_JWT_SECRET}
+      JAVA_REDIS_HOST: redis
+      JAVA_REDIS_PORT: 6379
+      JAVA_CACHE_ENABLED: ${JAVA_CACHE_ENABLED:-false}
+    depends_on:
+      mysql: {condition: service_healthy}
+      redis: {condition: service_healthy}
+    ports: ["127.0.0.1:8081:8081"]
+  frontend:
+    profiles: [app]
+    build:
+      context: frontend
+      args: {VITE_BACKEND: java}
+    volumes: ["./deploy/java/nginx.conf:/etc/nginx/conf.d/default.conf:ro"]
+    depends_on: [api]
+    ports: ["127.0.0.1:5191:80"]
+volumes:
+  java_mysql_data:

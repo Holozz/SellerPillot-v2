@@ -2,11 +2,22 @@
 
 面向小型卖家的经营管理与智能运营应用：查询店铺事实，检索规则和商品资料，生成待确认的标题草稿，确认时校验版本并记录执行回执。
 
-本仓库在独立目录升级原 SellerPilot，未修改相邻 v1 项目及数据库。当前代码仍为 Python v2 初版，尚未达到完整方案的全部完成标准。
+本仓库在独立目录升级原 SellerPilot，保留 Python 实现作为独立参考；当前新增 Java 业务后端与对应前端模式。Java 使用独立数据库、Compose 项目和端口。
 
-2026-10-23 新增 [Java 后端改造计划](docs/Java后端改造计划-2026-10-23.md)：面向通用后端实习，以经营查询性能、并发审批正确性和订单导入为主线，包含当前代码盘点、已有报告边界、技术选型、分阶段迁移与验收。**Java 改造尚未实施，文中的性能指标均为待验证目标。**此前的 [Python v2 方案](SellerPilot-v2方案-v2.0-2026-10-22.md)保留为历史目标参考；下列运行方式仍对应当前 Python 代码。
+Java 版本以经营查询性能、并发审批正确性和订单导入为主线，已实现账号/权限、商品、导入、QuerySpec、版本缓存及审批事务。[Java 运行与架构说明](backend-java/README.md)包含启动、测试和边界；[本次实施与实测记录](docs/Java改造实施记录-2026-10-25.md)记录验证结果及失败案例。[Java 原改造计划](docs/Java后端改造计划-2026-10-23.md)仍保留规划时的目标，不把全部目标视为已完成。
 
-## 已有代码
+2026-10-26 归档：[按目录整理的改造进度](docs/progress/2026-10-26-java-migration.md)，列明各目录改动、已有验证和下一步事项。
+
+推荐先运行 Java 业务版：
+
+```powershell
+./backend-java/scripts/setup-env.ps1
+docker compose --env-file .env.java -f compose.java.yaml --profile app up -d --build
+```
+
+访问 http://127.0.0.1:5191，API http://127.0.0.1:8081。前端仅启用经营分析、商品、导入、审批与团队权限；Java 当前未迁移 Python RAG/Agent/异步任务。下列既有功能和运行方式属于 Python 版本，[Python v2 方案](SellerPilot-v2方案-v2.0-2026-10-22.md)保留为历史参考。
+
+## Python 版本已有代码
 
 - 账号、店铺、商品、订单与明细 CSV 接入、经营统计，保留原业务入口。
 - 店铺成员、owner/operator/viewer 权限、店铺内唯一 SKU、商品版本和数据版本。

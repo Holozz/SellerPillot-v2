@@ -1,0 +1,88 @@
+{
+  "collected_at": "2026-10-25T14:12:29.063305+00:00",
+  "scope": "local synthetic-data test; shared Windows/Docker host, not production SLA",
+  "os": "Windows-11-10.0.26200-SP0",
+  "logical_cpus": 18,
+  "java_pool": {
+    "hikari_max": 12,
+    "aggregation_permits_per_process": 2,
+    "tomcat_threads": 64,
+    "accept_count": 128
+  },
+  "cache_ttl_seconds": 120,
+  "jvm_options": "JDK defaults; no GC/heap tuning",
+  "k6_image": "grafana/k6:1.3.0",
+  "stages": "J0/J1 cache disabled; J2J3 cache and rebuild protection enabled together, no separate rebuild ablation",
+  "docker": {
+    "ServerVersion": "29.1.2",
+    "NCPU": 18,
+    "MemTotal": 16485371904,
+    "OperatingSystem": "Docker Desktop"
+  },
+  "k6_digest": [
+    "grafana/k6@sha256:3ddc8b1a33a2c3d8edc6e99b6a762ae36cba08788463458f5e6a7703e14eb77d"
+  ],
+  "mysql": {
+    "version": "8.4.9",
+    "innodb_buffer_pool_bytes": 134217728,
+    "isolation": "REPEATABLE-READ",
+    "max_connections": 151
+  },
+  "table_storage_estimates": [
+    {
+      "table": "order_items",
+      "data_bytes": 206307328,
+      "index_bytes": 329662464
+    },
+    {
+      "table": "orders",
+      "data_bytes": 81379328,
+      "index_bytes": 200982528
+    }
+  ],
+  "instance_8081_metrics_at_collection": {
+    "sellerpilot.aggregate.sql": [
+      {
+        "statistic": "COUNT",
+        "value": 6.0
+      }
+    ],
+    "sellerpilot.cache.hit": [
+      {
+        "statistic": "COUNT",
+        "value": 119677.0
+      }
+    ],
+    "sellerpilot.cache.miss": [
+      {
+        "statistic": "COUNT",
+        "value": 258.0
+      }
+    ],
+    "sellerpilot.cache.coalesced": [
+      {
+        "statistic": "COUNT",
+        "value": 252.0
+      }
+    ],
+    "hikaricp.connections.active": [
+      {
+        "statistic": "VALUE",
+        "value": 0.0
+      }
+    ],
+    "hikaricp.connections.max": [
+      {
+        "statistic": "VALUE",
+        "value": 12.0
+      }
+    ]
+  },
+  "python_source_baseline": {
+    "files_checked": 61,
+    "changed": [],
+    "other_baseline_changes": [
+      "frontend/src/app/App.tsx"
+    ]
+  }
+}

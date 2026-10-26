@@ -1,0 +1,12 @@
+{
+  "stage": "J1-candidate-rejected",
+  "estimated_plan": "-> Limit: 20 row(s)\n    -> Sort: o.currency, value DESC, p.id, limit input to 20 row(s) per chunk\n        -> Table scan on <temporary>\n            -> Aggregate using temporary table\n                -> Nested loop inner join  (cost=43681 rows=1223)\n                    -> Nested loop inner join  (cost=26180 rows=24453)\n                        -> Index lookup on p using store_id (store_id=3)  (cost=19 rows=100)\n                        -> Filter: ((i.product_id = p.id) and (i.order_id is not null))  (cost=17.3 rows=245)\n                            -> Covering index lookup on i using ix_items_metrics (store_id=3)  (cost=17.3 rows=2445)\n                    -> Filter: ((o.store_id = 3) and (o.ordered_at >= TIMESTAMP'2026-10-18 00:00:00') and (o.ordered_at < TIMESTAMP'2026-10-25 00:00:00') and (o.`status` in ('paid','shipped')))  (cost=0.616 rows=0.05)\n                        -> Single-row index lookup on o using PRIMARY (id=i.order_id)  (cost=0.616 rows=1)\n",
+  "reason": "optimizer scans hot-store covering item range once per product because store prefix cardinality is underestimated",
+  "cancelled_queries": [
+    {
+      "id": 618,
+      "elapsed_seconds": 96
+    }
+  ],
+  "scope": "candidate regression, not a completed latency measurement"
+}

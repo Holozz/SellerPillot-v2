@@ -1,0 +1,31 @@
+{
+  "scope": "synthetic MySQL fixtures, not production orders or a performance result",
+  "seed": 42,
+  "as_of": "2026-10-25T00:00:00Z",
+  "orders": 1000000,
+  "order_items": 2499285,
+  "stores": [
+    3,
+    4,
+    5
+  ],
+  "store_distribution": {
+    "3": 800053,
+    "4": 149719,
+    "5": 50228
+  },
+  "query_store_id": 3,
+  "username": "bench_15b309e0",
+  "elapsed_seconds": 120.39609660000133,
+  "query": {
+    "metric": "sales",
+    "group_by": "product",
+    "start": "2026-10-18T00:00:00Z",
+    "end": "2026-10-25T00:00:00Z",
+    "statuses": [
+      "paid",
+      "shipped"
+    ],
+    "limit": 20
+  }
+}

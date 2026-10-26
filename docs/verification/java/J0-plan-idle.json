@@ -1,0 +1,48 @@
+{
+  "stage" : "J0-idle",
+  "sql_source" : "com.sellerpilot.analytics.MetricsMapper.query",
+  "sql" : "SELECT o.currency,p.id AS product_id,p.sku,p.title,COALESCE(SUM(i.quantity*i.unit_price-i.refund_amount),0) AS value,COALESCE(SUM(i.quantity*i.unit_price),0) AS gross_sales,COALESCE(SUM(i.refund_amount),0) AS refund_amount,COALESCE(SUM(i.quantity*i.unit_price-i.refund_amount),0) AS net_sales FROM orders o LEFT JOIN order_items i ON i.order_id=o.id AND i.store_id=o.store_id JOIN products p ON p.id=i.product_id AND p.store_id=o.store_id WHERE o.store_id=? AND o.ordered_at >= ? AND o.ordered_at < ? AND o.status IN  (  ? , ? )  GROUP BY o.currency,p.id,p.sku,p.title ORDER BY o.currency,value DESC,p.id LIMIT ?",
+  "query" : {
+    "metric" : "sales",
+    "group_by" : "product",
+    "start" : "2026-10-18T00:00Z",
+    "end" : "2026-10-25T00:00Z",
+    "statuses" : [ "paid", "shipped" ],
+    "limit" : 20,
+    "threshold" : null
+  },
+  "store_id" : 3,
+  "plan" : [ "-> Limit: 20 row(s)  (actual time=12802..12802 rows=20 loops=1)\n    -> Sort: o.currency, value DESC, p.id, limit input to 20 row(s) per chunk  (actual time=12802..12802 rows=20 loops=1)\n        -> Table scan on <temporary>  (actual time=12802..12802 rows=100 loops=1)\n            -> Aggregate using temporary table  (actual time=12802..12802 rows=100 loops=1)\n                -> Nested loop inner join  (cost=87772 rows=4852) (actual time=44..12563 rows=65984 loops=1)\n                    -> Nested loop inner join  (cost=82643 rows=14653) (actual time=43.9..12442 rows=65984 loops=1)\n                        -> Filter: (o.`status` in ('paid','shipped'))  (cost=54451 rows=11827) (actual time=43.4..4179 rows=26452 loops=1)\n                            -> Index range scan on o using ix_orders_store_time over (store_id = 3 AND '2026-10-18 00:00:00.000000' <= ordered_at < '2026-10-25 00:00:00.000000'), with index condition: ((o.store_id = 3) and (o.ordered_at >= TIMESTAMP'2026-10-18 00:00:00') and (o.ordered_at < TIMESTAMP'2026-10-25 00:00:00'))  (cost=54451 rows=59136) (actual time=43.4..4155 rows=31298 loops=1)\n                        -> Filter: ((i.store_id = 3) and (i.product_id is not null))  (cost=2.14 rows=1.24) (actual time=0.311..0.312 rows=2.49 loops=26452)\n                            -> Index lookup on i using order_id (order_id=o.id)  (cost=2.14 rows=2.48) (actual time=0.31..0.311 rows=2.49 loops=26452)\n                    -> Filter: (p.store_id = 3)  (cost=0.25 rows=0.331) (actual time=0.0015..0.00158 rows=1 loops=65984)\n                        -> Single-row index lookup on p using PRIMARY (id=i.product_id)  (cost=0.25 rows=1) (actual time=0.00134..0.00137 rows=1 loops=65984)\n" ],
+  "indexes" : [ {
+    "column" : "id",
+    "seq" : 1,
+    "name" : "PRIMARY"
+  }, {
+    "column" : "store_id",
+    "seq" : 1,
+    "name" : "store_id"
+  }, {
+    "column" : "external_order_id",
+    "seq" : 2,
+    "name" : "store_id"
+  }, {
+    "column" : "store_id",
+    "seq" : 1,
+    "name" : "store_id_2"
+  }, {
+    "column" : "id",
+    "seq" : 2,
+    "name" : "store_id_2"
+  }, {
+    "column" : "store_id",
+    "seq" : 1,
+    "name" : "ix_orders_store_time"
+  }, {
+    "column" : "ordered_at",
+    "seq" : 2,
+    "name" : "ix_orders_store_time"
+  } ],
+  "jdbc_driver" : "mysql-connector-j-9.7.0 (Revision: 0aade1f13bcc98faf7dda5c02e782481eb291f62)",
+  "mysql_version" : "8.4.9",
+  "scope" : "single SQL execution plan; not an API p95 or throughput measurement"
+}

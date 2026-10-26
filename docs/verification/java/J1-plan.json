@@ -1,0 +1,64 @@
+{
+  "stage" : "J1-corrected",
+  "sql_source" : "com.sellerpilot.analytics.MetricsMapper.query",
+  "sql" : "SELECT o.currency,p.id AS product_id,p.sku,p.title,COALESCE(SUM(i.quantity*i.unit_price-i.refund_amount),0) AS value,COALESCE(SUM(i.quantity*i.unit_price),0) AS gross_sales,COALESCE(SUM(i.refund_amount),0) AS refund_amount,COALESCE(SUM(i.quantity*i.unit_price-i.refund_amount),0) AS net_sales FROM orders o LEFT JOIN order_items i ON i.order_id=o.id AND i.store_id=o.store_id JOIN products p ON p.id=i.product_id AND p.store_id=o.store_id WHERE o.store_id=? AND o.ordered_at >= ? AND o.ordered_at < ? AND o.status IN  (  ? , ? )  GROUP BY o.currency,p.id,p.sku,p.title ORDER BY o.currency,value DESC,p.id LIMIT ?",
+  "query" : {
+    "metric" : "sales",
+    "group_by" : "product",
+    "start" : "2026-10-18T00:00Z",
+    "end" : "2026-10-25T00:00Z",
+    "statuses" : [ "paid", "shipped" ],
+    "limit" : 20,
+    "threshold" : null
+  },
+  "store_id" : 3,
+  "plan" : [ "-> Limit: 20 row(s)  (actual time=1250..1250 rows=20 loops=1)\n    -> Sort: o.currency, value DESC, p.id, limit input to 20 row(s) per chunk  (actual time=1250..1250 rows=20 loops=1)\n        -> Table scan on <temporary>  (actual time=1250..1250 rows=100 loops=1)\n            -> Aggregate using temporary table  (actual time=1250..1250 rows=100 loops=1)\n                -> Nested loop inner join  (cost=181898 rows=41902) (actual time=0.591..1139 rows=65984 loops=1)\n                    -> Nested loop inner join  (cost=74335 rows=126545) (actual time=0.154..1065 rows=65984 loops=1)\n                        -> Filter: ((o.store_id = 3) and (o.ordered_at >= TIMESTAMP'2026-10-18 00:00:00') and (o.ordered_at < TIMESTAMP'2026-10-25 00:00:00') and (o.`status` in ('paid','shipped')))  (cost=10797 rows=50382) (actual time=0.137..38 rows=26452 loops=1)\n                            -> Covering index range scan on o using ix_orders_metrics over (store_id = 3 AND status = 'paid' AND '2026-10-18 00:00:00.000000' <= ordered_at < '2026-10-25 00:00:00.000000') OR (store_id = 3 AND status = 'shipped' AND '2026-10-18 00:00:00.000000' <= ordered_at < '2026-10-25 00:00:00.000000')  (cost=10797 rows=50382) (actual time=0.125..21.5 rows=26452 loops=1)\n                        -> Filter: (i.product_id is not null)  (cost=1.01 rows=2.51) (actual time=0.038..0.0386 rows=2.49 loops=26452)\n                            -> Covering index lookup on i using ix_items_metrics (order_id=o.id, store_id=3)  (cost=1.01 rows=2.51) (actual time=0.0378..0.0383 rows=2.49 loops=26452)\n                    -> Filter: (p.store_id = 3)  (cost=0.75 rows=0.331) (actual time=915e-6..977e-6 rows=1 loops=65984)\n                        -> Single-row index lookup on p using PRIMARY (id=i.product_id)  (cost=0.75 rows=1) (actual time=787e-6..807e-6 rows=1 loops=65984)\n" ],
+  "indexes" : [ {
+    "seq" : 1,
+    "name" : "PRIMARY",
+    "column" : "id"
+  }, {
+    "seq" : 1,
+    "name" : "store_id",
+    "column" : "store_id"
+  }, {
+    "seq" : 2,
+    "name" : "store_id",
+    "column" : "external_order_id"
+  }, {
+    "seq" : 1,
+    "name" : "store_id_2",
+    "column" : "store_id"
+  }, {
+    "seq" : 2,
+    "name" : "store_id_2",
+    "column" : "id"
+  }, {
+    "seq" : 1,
+    "name" : "ix_orders_store_time",
+    "column" : "store_id"
+  }, {
+    "seq" : 2,
+    "name" : "ix_orders_store_time",
+    "column" : "ordered_at"
+  }, {
+    "seq" : 1,
+    "name" : "ix_orders_metrics",
+    "column" : "store_id"
+  }, {
+    "seq" : 2,
+    "name" : "ix_orders_metrics",
+    "column" : "status"
+  }, {
+    "seq" : 3,
+    "name" : "ix_orders_metrics",
+    "column" : "ordered_at"
+  }, {
+    "seq" : 4,
+    "name" : "ix_orders_metrics",
+    "column" : "currency"
+  } ],
+  "jdbc_driver" : "mysql-connector-j-9.7.0 (Revision: 0aade1f13bcc98faf7dda5c02e782481eb291f62)",
+  "mysql_version" : "8.4.9",
+  "scope" : "single SQL execution plan; not an API p95 or throughput measurement"
+}
