@@ -14,6 +14,8 @@ npm run dev -- --port 5191
 
 Vite 将 `/api` 与 `/api/v2` 请求代理到 `http://127.0.0.1:8081`。访问 http://127.0.0.1:5191。
 
+容器版由 `frontend/nginx.conf` 提供 API 代理，Dockerfile 将其复制到镜像。修改该文件后需使用 `--build` 重建前端镜像。
+
 ## 功能
 
 账号登录/注册、店铺选择、商品管理、CSV 订单与明细导入、经营统计、标题变更审批、团队权限。AI Agent/RAG 不属于当前 Java 版本。

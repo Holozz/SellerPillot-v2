@@ -30,6 +30,14 @@
 
 本次未删除 Docker 数据卷、`.env`/`.env.java`、`.data/` 中的本地凭据和模拟数据，也未改动用户正在编辑的简历目标稿。迁移前源码仍可从 Git 历史检出。本轮仅运行前端生产构建、Python 工具语法检查和 Compose 配置解析；没有重跑 Java 测试套件或 Playwright 流程。
 
+## 2026-10-27 后续清理：无用文件与重复配置
+
+删除旧 pytest 配置/报错输出、6 份前端分步说明、旧 Python API 的 Prometheus/Grafana 配置、无构建入口使用的根目录 `.dockerignore`，以及旧 pytest 临时目录和 SQLite 造数文件。Java 实验报告、原始日志、历史设计记录和本地数据保留。
+
+前端移除旧聊天/标题/统计页面样式，将仍使用的 CSV 样式保留为 `frontend/src/styles/imports.css`。Nginx 配置统一由 `frontend/nginx.conf` 在镜像构建时复制，删除 `deploy/java/nginx.conf` 和重复挂载。配置变动后按 README 的 `--build` 命令重建前端镜像。
+
+本轮前端类型检查与生产构建通过，Compose 配置解析及 Git 差异检查通过；未启动服务或重跑后端/浏览器测试。用户简历目标稿的已有改动未纳入本轮清理。
+
 ## 后端核心机制
 
 - 经营查询：白名单 QuerySpec、参数绑定、UTC 半开区间、币种分开、订单 distinct、退款扣减。
