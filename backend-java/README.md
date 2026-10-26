@@ -72,6 +72,17 @@ Java 使用独立 Compose 项目、MySQL 3310 / `sellerpilot_java`、Redis 6383�
 docker compose --env-file .env.java -f compose.java.yaml --profile app up -d --build
 ```
 
+若构建在 `auth.docker.io/token` 报连接重置，可先确认本地代理可用，再仅为当前终端设置代理后重试。例如本机代理监听 `127.0.0.1:7897`：
+
+```powershell
+$env:HTTP_PROXY='http://127.0.0.1:7897'
+$env:HTTPS_PROXY='http://127.0.0.1:7897'
+$env:NO_PROXY='127.0.0.1,localhost'
+docker compose --env-file .env.java -f compose.java.yaml --profile app up -d --build
+```
+
+代理端口按实际配置填写；这些变量只影响当前终端及其子进程。
+
 ## 可复现验证
 
 ```powershell

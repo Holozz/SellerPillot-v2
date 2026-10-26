@@ -1,0 +1,95 @@
+{
+  "verified_at": "2026-10-26T14:39:31.135430+00:00",
+  "source_commit": "3733a98bee9811f3765058fc20d387ff75cebe6d",
+  "scope": "full Java Compose stack: API, Nginx frontend, MySQL and Redis; local deployment validation, not a new capacity benchmark",
+  "build_exit_code": 0,
+  "build_proxy": "process-only HTTP(S)_PROXY via local 127.0.0.1:7897",
+  "build_log_sha256": "f9aed25e9e77e3c5aac0c086f4689eff990ef0f0a10a0a615030bad7d1bbb86f",
+  "containers": [
+    {
+      "name": "sellerpilot-java-api-1",
+      "image": "sellerpilot-java-api",
+      "image_id": "sha256:928849f5d40d14a70ff6710d4262e13f79206d2d65fa6f26ea92d4c2d79623bb",
+      "status": "running",
+      "started_at": "2026-10-26T14:38:44.728813005Z",
+      "ports": {
+        "8081/tcp": [
+          {
+            "HostIp": "127.0.0.1",
+            "HostPort": "8081"
+          }
+        ]
+      },
+      "cache_enabled": true
+    },
+    {
+      "name": "sellerpilot-java-frontend-1",
+      "image": "sellerpilot-java-frontend",
+      "image_id": "sha256:c7af5192df4959b789b3d0b6c2816212c33d4aa2c9f19d43c2961eca67244607",
+      "status": "running",
+      "started_at": "2026-10-26T14:38:45.069932573Z",
+      "ports": {
+        "80/tcp": [
+          {
+            "HostIp": "127.0.0.1",
+            "HostPort": "5191"
+          }
+        ]
+      }
+    },
+    {
+      "name": "sellerpilot-java-mysql-1",
+      "image": "mysql:8.4",
+      "image_id": "sha256:c36050afdca850f23cef85703f84c7531a5ae155a11b5ee1c60acb09937c4084",
+      "status": "running",
+      "started_at": "2026-10-26T14:22:51.867184553Z",
+      "ports": {
+        "3306/tcp": [
+          {
+            "HostIp": "127.0.0.1",
+            "HostPort": "3310"
+          }
+        ]
+      },
+      "health": "healthy"
+    },
+    {
+      "name": "sellerpilot-java-redis-1",
+      "image": "redis:7.4-alpine",
+      "image_id": "sha256:57e4255cc971b1c8d6f8a6ca283ac01bc3ecdd914273ef6bfaede87aaecd6541",
+      "status": "running",
+      "started_at": "2026-10-26T14:26:28.465885575Z",
+      "ports": {
+        "6379/tcp": [
+          {
+            "HostIp": "127.0.0.1",
+            "HostPort": "6383"
+          }
+        ]
+      },
+      "health": "healthy"
+    }
+  ],
+  "api_health": {
+    "groups": [
+      "liveness",
+      "readiness"
+    ],
+    "status": "UP"
+  },
+  "frontend_status": 200,
+  "frontend_server": "nginx/1.28.3",
+  "browser_validation": {
+    "environment": "Nginx frontend and Java API containers",
+    "report": "browser-results.json",
+    "passed": 1,
+    "unexpected": 0,
+    "duration_ms": 3687.733,
+    "report_sha256": "f12cc6a52090507c15c942382912e9f386fcd7d75e89f7cc346a445cd20a0f8b"
+  },
+  "screenshots_sha256": {
+    "metrics-desktop.png": "28a4e4c29daa168c1efde45f5e6b307b87dd42508e5675d915782c673e6cf296",
+    "approval-desktop.png": "4c35b303c75c8680438be23785741e4ee41c2b74a3e601bb26a4c6bc2bea56ec",
+    "approval-mobile.png": "e3aae1757a48191efc84e75eef7f257d11822275ab914f81787c423b8dcf9566"
+  }
+}

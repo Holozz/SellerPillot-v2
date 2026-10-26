@@ -6,7 +6,7 @@
 
 Java 版本以经营查询性能、并发审批正确性和订单导入为主线，已实现账号/权限、商品、导入、QuerySpec、版本缓存及审批事务。[Java 运行与架构说明](backend-java/README.md)包含启动、测试和边界；[本次实施与实测记录](docs/Java改造实施记录-2026-10-25.md)记录验证结果及失败案例。[Java 原改造计划](docs/Java后端改造计划-2026-10-23.md)仍保留规划时的目标，不把全部目标视为已完成。
 
-2026-10-26 归档：[按目录整理的改造进度](docs/progress/2026-10-26-java-migration.md)，列明各目录改动、已有验证和下一步事项。
+2026-10-26 归档：[按目录整理的改造进度](docs/progress/2026-10-26-java-migration.md)，列明各目录改动、已有验证和下一步事项。Java 四服务 Compose 已完成镜像构建、启动和浏览器全流程验收，见 [部署记录](docs/verification/java/compose-deployment.json)。
 
 推荐先运行 Java 业务版：
 
