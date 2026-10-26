@@ -1,5 +1,5 @@
 {
-  "collected_at": "2026-10-25T14:12:29.063305+00:00",
+  "collected_at": "2026-10-26T14:27:50.736606+00:00",
   "scope": "local synthetic-data test; shared Windows/Docker host, not production SLA",
   "os": "Windows-11-10.0.26200-SP0",
   "logical_cpus": 18,
@@ -16,7 +16,7 @@
   "docker": {
     "ServerVersion": "29.1.2",
     "NCPU": 18,
-    "MemTotal": 16485371904,
+    "MemTotal": 16485380096,
     "OperatingSystem": "Docker Desktop"
   },
   "k6_digest": [
@@ -44,25 +44,31 @@
     "sellerpilot.aggregate.sql": [
       {
         "statistic": "COUNT",
-        "value": 6.0
+        "value": 5.0
       }
     ],
     "sellerpilot.cache.hit": [
       {
         "statistic": "COUNT",
-        "value": 119677.0
+        "value": 1.0
       }
     ],
     "sellerpilot.cache.miss": [
       {
         "statistic": "COUNT",
-        "value": 258.0
+        "value": 43.0
       }
     ],
     "sellerpilot.cache.coalesced": [
       {
         "statistic": "COUNT",
-        "value": 252.0
+        "value": 38.0
+      }
+    ],
+    "sellerpilot.cache.degraded": [
+      {
+        "statistic": "COUNT",
+        "value": 21.0
       }
     ],
     "hikaricp.connections.active": [

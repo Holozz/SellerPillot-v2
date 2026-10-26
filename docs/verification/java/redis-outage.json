@@ -1,0 +1,221 @@
+{
+  "apis": [
+    "http://127.0.0.1:8081",
+    "http://127.0.0.1:8082"
+  ],
+  "scope": "synthetic fixture, two actual JVM processes, contention not sustained throughput",
+  "redis_outage": true,
+  "requests": [
+    {
+      "status": 200,
+      "correct": true,
+      "seconds": 1.705462100013392
+    },
+    {
+      "status": 200,
+      "correct": true,
+      "seconds": 1.7183034000045154
+    },
+    {
+      "status": 200,
+      "correct": true,
+      "seconds": 1.703484199999366
+    },
+    {
+      "status": 200,
+      "correct": true,
+      "seconds": 1.7176633000053698
+    },
+    {
+      "status": 200,
+      "correct": true,
+      "seconds": 1.7049587000074098
+    },
+    {
+      "status": 200,
+      "correct": true,
+      "seconds": 1.7106130000029225
+    },
+    {
+      "status": 200,
+      "correct": true,
+      "seconds": 1.702873299989733
+    },
+    {
+      "status": 200,
+      "correct": true,
+      "seconds": 1.7142234000057215
+    },
+    {
+      "status": 200,
+      "correct": true,
+      "seconds": 1.7024659000016982
+    },
+    {
+      "status": 200,
+      "correct": true,
+      "seconds": 1.716577099999995
+    },
+    {
+      "status": 200,
+      "correct": true,
+      "seconds": 1.7042619999992894
+    },
+    {
+      "status": 200,
+      "correct": true,
+      "seconds": 1.7199078999983612
+    },
+    {
+      "status": 200,
+      "correct": true,
+      "seconds": 1.7029105000110576
+    },
+    {
+      "status": 200,
+      "correct": true,
+      "seconds": 1.7181821999984095
+    },
+    {
+      "status": 200,
+      "correct": true,
+      "seconds": 1.7026250999915646
+    },
+    {
+      "status": 200,
+      "correct": true,
+      "seconds": 1.7151813000091352
+    },
+    {
+      "status": 200,
+      "correct": true,
+      "seconds": 1.7135520000010729
+    },
+    {
+      "status": 200,
+      "correct": true,
+      "seconds": 1.7191265000001295
+    },
+    {
+      "status": 200,
+      "correct": true,
+      "seconds": 1.7044826000055764
+    },
+    {
+      "status": 200,
+      "correct": true,
+      "seconds": 1.7135017999971751
+    },
+    {
+      "status": 200,
+      "correct": true,
+      "seconds": 1.7032312000083039
+    },
+    {
+      "status": 200,
+      "correct": true,
+      "seconds": 1.7184433999937028
+    },
+    {
+      "status": 200,
+      "correct": true,
+      "seconds": 1.7010439000005135
+    },
+    {
+      "status": 200,
+      "correct": true,
+      "seconds": 1.7142228000011528
+    },
+    {
+      "status": 200,
+      "correct": true,
+      "seconds": 1.7028416999964975
+    },
+    {
+      "status": 200,
+      "correct": true,
+      "seconds": 1.7161483999952907
+    },
+    {
+      "status": 200,
+      "correct": true,
+      "seconds": 1.7015088999905856
+    },
+    {
+      "status": 200,
+      "correct": true,
+      "seconds": 1.7179812999966089
+    },
+    {
+      "status": 200,
+      "correct": true,
+      "seconds": 1.7026542999956291
+    },
+    {
+      "status": 200,
+      "correct": true,
+      "seconds": 1.7175637000036659
+    },
+    {
+      "status": 200,
+      "correct": true,
+      "seconds": 1.7019429999927524
+    },
+    {
+      "status": 200,
+      "correct": true,
+      "seconds": 1.7134813999873586
+    },
+    {
+      "status": 200,
+      "correct": true,
+      "seconds": 1.70321910000348
+    },
+    {
+      "status": 200,
+      "correct": true,
+      "seconds": 1.7163816999964183
+    },
+    {
+      "status": 200,
+      "correct": true,
+      "seconds": 1.7018394000042463
+    },
+    {
+      "status": 200,
+      "correct": true,
+      "seconds": 1.714059999998426
+    },
+    {
+      "status": 200,
+      "correct": true,
+      "seconds": 1.7018016000074567
+    },
+    {
+      "status": 200,
+      "correct": true,
+      "seconds": 1.713512600006652
+    },
+    {
+      "status": 200,
+      "correct": true,
+      "seconds": 1.7014038000052096
+    },
+    {
+      "status": 200,
+      "correct": true,
+      "seconds": 1.7171262000047136
+    }
+  ],
+  "aggregate_sql_delta": 2.0,
+  "counter_before": [
+    2.0,
+    0
+  ],
+  "counter_after": [
+    3.0,
+    1.0
+  ],
+  "recovery_status": 200,
+  "recovery_correct": true
+}
