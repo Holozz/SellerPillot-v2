@@ -41,7 +41,7 @@ class CommerceIntegrationTest {
         return new Reply(response.statusCode(),json.readValue(response.body(),Map.class),List.of());
     }
     @BeforeEach void fixtures()throws Exception{
-        for(String table:List.of("sales_refund_revisions","sales_line_revisions","sales_order_revisions","procurement_batch_allocations","procurement_batch_revisions","store_product_mapping_revisions","catalog_products","source_import_rows","source_import_batches","fx_rates","fx_rate_sets","audit_logs","action_executions","action_proposals","import_batches","order_items","orders","products","store_memberships","stores","users"))db.update("DELETE FROM "+table);
+        for(String table:List.of("margin_reports","sales_refund_revisions","sales_line_revisions","sales_order_revisions","procurement_batch_allocations","procurement_batch_revisions","store_product_mapping_revisions","catalog_products","source_import_rows","source_import_batches","fx_rates","fx_rate_sets","audit_logs","action_executions","action_proposals","import_batches","order_items","orders","products","store_memberships","stores","users"))db.update("DELETE FROM "+table);
         assertEquals(201,send("POST","/auth/register",Map.of("username","owner","password","Password123!"),null).status);
         token=(String)send("POST","/auth/login",Map.of("username","owner","password","Password123!"),null).body.get("access_token");
         Reply store=send("POST","/stores",Map.of("name","Fixture","platform","amazon"),token);assertEquals(201,store.status,store.body.toString());
@@ -182,6 +182,34 @@ class CommerceIntegrationTest {
         String lineB="platform_code,store_key,line_key,order_number,merchant_sku,units,unit_sale_price,line_discount,price_currency,purchase_lot\nmarket-b,store-b,B-200-1,B-200,MUG-EU,1,20.00,0.00,EUR,B-BATCH-09\n";
         assertEquals(200,sourceCsv(marketBSid,"order-items",lineB).status);
         assertEquals(2,db.queryForObject("SELECT COUNT(*) FROM sales_line_revisions",Integer.class));
+        List<Map<String,Object>> rates=List.of(
+            Map.of("base_currency","USD","effective_date","2026-10-31","rate","6.90"),
+            Map.of("base_currency","USD","effective_date","2026-11-01","rate","7.00"),
+            Map.of("base_currency","USD","effective_date","2026-11-03","rate","7.20"),
+            Map.of("base_currency","EUR","effective_date","2026-10-30","rate","7.80"),
+            Map.of("base_currency","EUR","effective_date","2026-11-02","rate","8.00"));
+        Reply rateSet=send("POST","/api/v2/stores/"+sourceSid+"/fx-rate-sets",Map.of("source","fixture","source_revision","margin-v1","rates",rates),token);assertEquals(200,rateSet.status);
+        Reply report=send("POST","/api/v2/margin-reports",Map.of("store_ids",List.of(sourceSid,marketBSid),"fx_rate_set_id",rateSet.body.get("id"),"start","2026-11-01","end","2026-11-03"),token);assertEquals(200,report.status,report.body.toString());
+        Map<String,Object> result=(Map<String,Object>)report.body.get("result");assertEquals("133.30",result.get("gross_margin_cny"));assertEquals("286.00",result.get("sales_net_cny"));assertEquals("152.70",result.get("procurement_cost_cny"));assertEquals(true,result.get("complete"));
+        Files.writeString(Path.of("../docs/verification/p0-contract/actual-margin.json"),json.writeValueAsString(Map.of("environment",db.queryForObject("SELECT VERSION()",String.class),"expected",Map.of("sales_net_cny","286.00","procurement_cost_cny","152.70","gross_margin_cny","133.30"),"actual",result)));
+        assertEquals(result,send("POST","/api/v2/margin-reports/"+report.body.get("id")+"/recompute",null,token).body);
+        Reply refundReport=send("POST","/api/v2/margin-reports",Map.of("store_ids",List.of(sourceSid),"fx_rate_set_id",rateSet.body.get("id"),"start","2026-11-03","end","2026-11-04"),token);assertEquals(200,refundReport.status,refundReport.body.toString());
+        assertEquals("-1.20",((Map<String,Object>)refundReport.body.get("result")).get("gross_margin_cny"));
+        Reply partialSet=send("POST","/api/v2/stores/"+sourceSid+"/fx-rate-sets",Map.of("source","fixture","source_revision","partial","rates",List.of(rates.get(1))),token);
+        Reply partial=send("POST","/api/v2/margin-reports",Map.of("store_ids",List.of(sourceSid,marketBSid),"fx_rate_set_id",partialSet.body.get("id"),"start","2026-11-01","end","2026-11-03"),token);assertEquals(200,partial.status);
+        assertEquals(false,((Map<String,Object>)partial.body.get("result")).get("complete"));assertNull(((Map<String,Object>)partial.body.get("result")).get("gross_margin_cny"));
+        assertEquals(result,((Map<String,Object>)send("GET","/api/v2/margin-reports/"+report.body.get("id"),null,token).body.get("result")));
+        assertEquals(200,sourceCsv(sourceSid,"orders",file.replace(",paid,USD",",cancelled,USD"),true).status);
+        Reply correctedReport=send("POST","/api/v2/margin-reports",Map.of("store_ids",List.of(sourceSid,marketBSid),"fx_rate_set_id",rateSet.body.get("id"),"start","2026-11-01","end","2026-11-03"),token);
+        assertEquals(200,correctedReport.status,correctedReport.body.toString());assertEquals("62.50",((Map<String,Object>)correctedReport.body.get("result")).get("gross_margin_cny"));
+        assertEquals(result,send("POST","/api/v2/margin-reports/"+report.body.get("id")+"/recompute",null,token).body);
+        send("POST","/auth/register",Map.of("username","margin-viewer","password","Password123!"),null);
+        String viewer=(String)send("POST","/auth/login",Map.of("username","margin-viewer","password","Password123!"),null).body.get("access_token");
+        for(long storeId:List.of(sourceSid,marketBSid))assertEquals(200,send("PUT","/api/v2/stores/"+storeId+"/members",Map.of("username","margin-viewer","role","viewer"),token).status);
+        assertEquals(200,send("GET","/api/v2/margin-reports/"+report.body.get("id"),null,viewer).status);
+        send("PUT","/api/v2/stores/"+marketBSid+"/members",Map.of("username","margin-viewer","role","viewer","active",false),token);
+        assertEquals(404,send("GET","/api/v2/margin-reports/"+report.body.get("id"),null,viewer).status);
+        assertEquals(404,send("POST","/api/v2/margin-reports/"+report.body.get("id")+"/recompute",null,viewer).status);
     }
     @Test void sourceCorrectionsRequireConfirmationAndFailedLineBatchRollsBackAtomically()throws Exception{
         Reply store=send("POST","/stores",Map.of("name","Revision store","platform","market-a","source_store_key","revision-store"),token);assertEquals(201,store.status);

@@ -13,6 +13,7 @@ public final class Rows {
     public static Map<String,Object> json(Map<String,Object> row){
         Map<String,Object> result=new LinkedHashMap<>();
         row.forEach((key,value)->result.put(key,value instanceof BigDecimal d?d.toPlainString():
+            value instanceof java.sql.Date d?d.toLocalDate().toString():
             value instanceof Timestamp t?t.toLocalDateTime()+"Z":value instanceof LocalDateTime t?t+"Z":value));
         return result;
     }

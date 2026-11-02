@@ -20,4 +20,12 @@
 - 两店合计：销售净额 `286.00 CNY`，采购成本 `152.70 CNY`，销售毛利 `133.30 CNY`。
 - 所有销售行映射到同一个内部 SKU `MUG-01`；全局销量 `3` 件。
 
-这只是 P0 手工核算夹具，尚待导入器和报表实现后按此期望值验收。
+上述双店样例已通过 MySQL 集成接口核算，实际输出见 [actual-margin.json](actual-margin.json)：销售净额 286.00 元、采购成本 152.70 元、销售毛利 133.30 元。此处销售期间不包含 11 月 3 日的退款；另一个集成断言验证该日退款 4 USD、退货入库 1 件，分别按退款日 7.20 和采购日 6.90 折算，毛利影响为 -1.20 元。
+
+## 当前核算接口
+
+- `POST /api/v2/stores/{sid}/fx-rate-sets`：JSON 提交 `source`、`source_revision`、`rates`；每条 rate 包含 `base_currency`、`effective_date`、`rate`，报价币固定 CNY，方向为 1 单位原币兑换的人民币。保存后不覆盖旧版本；当前为手工导入接口，尚无 CSV 汇率上传或在线抓取。
+- `POST /api/v2/margin-reports`：JSON 提交 `store_ids`、`fx_rate_set_id`、`start`、`end`。日期按 UTC 左闭右开，店铺须同 owner、全部可读；当前上限 20 店、366 天、10000 条销售/退款事件。
+- `GET /api/v2/margin-reports/{id}`：读取保存的输入清单和结果；`POST /api/v2/margin-reports/{id}/recompute` 用原输入复算，不覆盖旧报表。两个接口均重新检查所有目标店铺权限。
+
+当前按业务日期精确匹配汇率，不擅自向前取最近日期。缺失时 `complete=false`，`gross_margin_cny=null`；`known_margin_cny` 仅为完整定价事件的小计，未折算事件保留原币金额与日期。完整度分母只含本系统已发布的销售/退款事件，不代表外部店铺所有记录均已导入。
