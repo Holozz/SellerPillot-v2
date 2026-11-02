@@ -1,0 +1,2 @@
+platform_code,store_key,line_key,order_number,merchant_sku,units,unit_sale_price,line_discount,price_currency,purchase_lot
+market-b,store-b,B-200-1,B-200,MUG-EU,1,20.00,0.00,EUR,B-BATCH-09

@@ -1,0 +1,2 @@
+platform_code,store_key,external_order_id,order_timestamp,payment_timestamp,order_state,order_currency
+market-b,store-b,B-200,2026-11-02T09:00:00+00:00,2026-11-02T09:10:00+00:00,settled,EUR

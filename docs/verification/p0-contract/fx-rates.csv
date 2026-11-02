@@ -1,0 +1,6 @@
+base_currency,quote_currency,effective_date,rate,source,source_revision
+USD,CNY,2026-10-31,6.90,simulation,fx-v1
+USD,CNY,2026-11-01,7.00,simulation,fx-v1
+USD,CNY,2026-11-02,7.10,simulation,fx-v1
+EUR,CNY,2026-10-30,7.80,simulation,fx-v1
+EUR,CNY,2026-11-02,8.00,simulation,fx-v1

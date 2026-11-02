@@ -1,0 +1,2 @@
+platform_code,store_key,external_order_id,ordered_at,paid_at,status,currency
+market-a,store-a,A-100,2026-11-01T08:00:00+00:00,2026-11-01T08:05:00+00:00,paid,USD

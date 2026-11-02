@@ -1,0 +1,2 @@
+platform_code,store_key,purchase_lot,merchant_sku,receipt_timestamp,received_units,cost_per_unit,cost_currency
+market-b,store-b,B-BATCH-09,MUG-EU,2026-10-30T10:00:00+00:00,5,12.50,EUR

@@ -1,0 +1,2 @@
+platform_code,store_key,source_batch_id,external_sku,received_at,quantity,unit_purchase_cost,currency
+market-a,store-a,A-BATCH-01,MUG-US,2026-10-31T08:00:00+00:00,10,4.00,USD

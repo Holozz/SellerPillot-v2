@@ -1,0 +1,2 @@
+platform_code,store_key,external_line_id,external_order_id,external_sku,quantity,unit_price,discount_amount,currency,source_batch_id
+market-a,store-a,A-100-1,A-100,MUG-US,2,10.00,2.00,USD,A-BATCH-01
