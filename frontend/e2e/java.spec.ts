@@ -5,7 +5,7 @@ test('毛利报表界面：跨店选择、缺汇率提示和历史复算',async(
   const result={complete:false,event_count:2,priced_event_count:1,sales_net_cny:'126.00',refunds_cny:'0.00',procurement_cost_cny:'55.20',returned_cost_cny:'0.00',known_margin_cny:'70.80',gross_margin_cny:null,products:[{internal_sku:'MUG-01',known_margin_cny:'70.80'}],details:[{store_id:2,source_row_id:9,external_line_id:'B-1',event:'sales',original_amount:'20.00',currency:'EUR',original_purchase_cost:'12.50',cost_currency:'EUR',revenue_rate_date:'2026-11-02',revenue_rate:null,cost_rate_date:'2026-10-30',cost_rate:null,complete:false}]}
   const fx={id:1,source:'provider',source_revision:'v1'}
   const saved={id:'report-1',result,input_manifest:{start:'2026-11-01',end:'2026-11-03',store_ids:[1,2],fx_rate_set:fx}}
-  let created=false,recomputed=0
+  let created=false,recomputed=0,fixedSubmitted=false
   await page.addInitScript(()=>sessionStorage.setItem('sellerpilot_token','ui-fixture'))
   await page.route('**/*',async route=>{
     const url=new URL(route.request().url()),p=url.pathname
@@ -16,8 +16,9 @@ test('毛利报表界面：跨店选择、缺汇率提示和历史复算',async(
     else if(p.endsWith('/fx-rate-sets'))body=[fx]
     else if(p.endsWith('/fx-rate-sets/1'))body={rates:[{base_currency:'USD',effective_date:'2026-11-01',rate:'7.00'}]}
     else if(p==='/api/v2/margin-reports'&&route.request().method()==='POST'){
-      expect(route.request().postDataJSON().store_ids).toEqual([1,2]);created=true;body=saved
+      const query=route.request().postDataJSON();expect(query.store_ids).toEqual([1,2]);if(query.fixed_rate_date){expect(query.fixed_rate_date).toBe('2026-11-02');fixedSubmitted=true}created=true;body=saved
     }else if(p==='/api/v2/margin-reports')body=created?[{id:'report-1',start_date:'2026-11-01',end_date:'2026-11-03',complete:false,known_margin_cny:'70.80',created_at:'2026-11-02T12:00Z'}]:[]
+    else if(p.endsWith('/compare')){await route.fulfill({status:422,json:{detail:'报表存在未定价事件，不能分解完整毛利差额'}});return}
     else if(p.endsWith('/recompute')){recomputed++;body=result}
     else if(p.endsWith('/report-1'))body=saved
     await route.fulfill({json:body})
@@ -38,6 +39,13 @@ test('毛利报表界面：跨店选择、缺汇率提示和历史复算',async(
   expect(recomputed).toBe(1)
   await page.getByRole('button',{name:'打开报表',exact:true}).click()
   await expect(page.getByRole('heading',{name:'报表 report-1',exact:true})).toBeVisible()
+  await page.getByRole('checkbox',{name:'使用固定日期汇率折算销售、退款与采购成本'}).check()
+  await page.getByLabel('固定汇率日期',{exact:true}).fill('2026-11-02')
+  await page.getByRole('button',{name:'生成并保存毛利报表'}).click()
+  await expect(page.getByRole('heading',{name:'报表 report-1',exact:true})).toBeVisible();expect(fixedSubmitted).toBe(true)
+  await page.getByLabel('基准报表',{exact:true}).selectOption('report-1');await page.getByLabel('目标报表',{exact:true}).selectOption('report-1')
+  await page.getByRole('button',{name:'计算报表差额'}).click()
+  await expect(page.getByRole('alert')).toHaveText('报表存在未定价事件，不能分解完整毛利差额')
 })
 
 test('统一导入界面：映射确认与冲突修订需用户确认',async({page})=>{

@@ -26,7 +26,9 @@
 
 - `POST /api/v2/stores/{sid}/fx-rate-sets`：JSON 提交 `source`、`source_revision`、`rates`；每条 rate 包含 `base_currency`、`effective_date`、`rate`，报价币固定 CNY，方向为 1 单位原币兑换的人民币。保存后不覆盖旧版本；当前为手工导入接口，尚无 CSV 汇率上传或在线抓取。
 - `POST /api/v2/margin-reports`：JSON 提交 `store_ids`、`fx_rate_set_id`、`start`、`end`。日期按 UTC 左闭右开，店铺须同 owner、全部可读；当前上限 20 店、366 天、10000 条销售/退款事件。
+- 可选 `fixed_rate_date` 将销售、退款和采购全部按同一日期的指定版本汇率折算；省略时保持各业务日期口径。样例以 2026-11-02 固定 USD 7.10、EUR 8.00 后，毛利为 131.00 元。
 - `GET /api/v2/margin-reports/{id}`：读取保存的输入清单和结果；`POST /api/v2/margin-reports/{id}/recompute` 用原输入复算，不覆盖旧报表。两个接口均重新检查所有目标店铺权限。
 - `GET /api/v2/margin-reports?store_id={sid}`：列出包含该店铺且调用者仍有全部目标店铺权限的最近 50 份报表。工作台“人民币销售毛利”已接入汇率导入、生成、历史查看和复算。
+- `POST /api/v2/margin-reports/compare`：提交 `baseline_id`、`target_id`。相同范围及口径下，先以基准汇率重算目标事实，分解业务数据和 FX 差额；固定口径须共享同一汇率集及固定日期。不能对缺汇率报表分解完整毛利。返回分量差额和变化事件前后来源；两份报表均重新授权。集成验证仅修改 USD 销售日汇率 7→8 时差额 +18.00 元全归 FX，取消 A 店订单时 -70.80 元全归业务数据。
 
 当前按业务日期精确匹配汇率，不擅自向前取最近日期。缺失时 `complete=false`，`gross_margin_cny=null`；`known_margin_cny` 仅为完整定价事件的小计，未折算事件保留原币金额与日期。完整度分母只含本系统已发布的销售/退款事件，不代表外部店铺所有记录均已导入。
