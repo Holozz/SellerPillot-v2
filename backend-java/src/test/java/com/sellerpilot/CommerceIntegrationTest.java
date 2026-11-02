@@ -207,9 +207,11 @@ class CommerceIntegrationTest {
         String viewer=(String)send("POST","/auth/login",Map.of("username","margin-viewer","password","Password123!"),null).body.get("access_token");
         for(long storeId:List.of(sourceSid,marketBSid))assertEquals(200,send("PUT","/api/v2/stores/"+storeId+"/members",Map.of("username","margin-viewer","role","viewer"),token).status);
         assertEquals(200,send("GET","/api/v2/margin-reports/"+report.body.get("id"),null,viewer).status);
+        assertTrue(send("GET","/api/v2/margin-reports?store_id="+sourceSid,null,viewer).rows.stream().anyMatch(row->((Map<?,?>)row).get("id").equals(report.body.get("id"))));
         send("PUT","/api/v2/stores/"+marketBSid+"/members",Map.of("username","margin-viewer","role","viewer","active",false),token);
         assertEquals(404,send("GET","/api/v2/margin-reports/"+report.body.get("id"),null,viewer).status);
         assertEquals(404,send("POST","/api/v2/margin-reports/"+report.body.get("id")+"/recompute",null,viewer).status);
+        assertFalse(send("GET","/api/v2/margin-reports?store_id="+sourceSid,null,viewer).rows.stream().anyMatch(row->((Map<?,?>)row).get("id").equals(report.body.get("id"))));
     }
     @Test void sourceCorrectionsRequireConfirmationAndFailedLineBatchRollsBackAtomically()throws Exception{
         Reply store=send("POST","/stores",Map.of("name","Revision store","platform","market-a","source_store_key","revision-store"),token);assertEquals(201,store.status);

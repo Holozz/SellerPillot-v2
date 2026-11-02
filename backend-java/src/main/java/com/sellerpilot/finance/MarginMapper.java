@@ -13,4 +13,6 @@ public interface MarginMapper {
     @Insert("INSERT INTO margin_reports(id,owner_id,store_ids,input_manifest,result,created_by) VALUES(#{id},#{owner},CAST(#{stores} AS JSON),CAST(#{manifest} AS JSON),CAST(#{result} AS JSON),#{user})")
     void save(@Param("id")String id,@Param("owner")long owner,@Param("stores")String stores,@Param("manifest")String manifest,@Param("result")String result,@Param("user")long user);
     @Select("SELECT * FROM margin_reports WHERE id=#{id}")Map<String,Object> get(String id);
+    @Select("SELECT r.id,r.created_at,r.store_ids,JSON_UNQUOTE(JSON_EXTRACT(r.input_manifest,'$.start')) AS start_date,JSON_UNQUOTE(JSON_EXTRACT(r.input_manifest,'$.end')) AS end_date,JSON_EXTRACT(r.result,'$.complete') AS complete,JSON_UNQUOTE(JSON_EXTRACT(r.result,'$.known_margin_cny')) AS known_margin_cny FROM margin_reports r WHERE JSON_CONTAINS(r.store_ids,CAST(#{sid} AS JSON)) AND NOT EXISTS(SELECT 1 FROM JSON_TABLE(r.store_ids,'$[*]' COLUMNS(sid BIGINT PATH '$')) targets WHERE NOT EXISTS(SELECT 1 FROM stores s WHERE s.id=targets.sid AND (s.owner_id=#{user} OR EXISTS(SELECT 1 FROM store_memberships m WHERE m.store_id=s.id AND m.user_id=#{user} AND m.active=TRUE)))) ORDER BY r.created_at DESC,r.id DESC LIMIT 50")
+    List<Map<String,Object>> history(@Param("user")long user,@Param("sid")long sid);
 }
