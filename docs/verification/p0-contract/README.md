@@ -24,6 +24,14 @@
 
 ## 当前核算接口
 
+### 多批次输入合同
+
+销售明细的新版表头将末列 `source_batch_id`（market-b 为 `purchase_lot`）替换为 `batch_allocations`，单元格是 JSON 数组，例如 `[{"source_batch_id":"LOT-A","quantity":1},{"source_batch_id":"LOT-B","quantity":2}]`。CSV 按标准双引号转义该单元格。收入、折扣、销售总数量仍只在该销售行记录一次；分配数量之和必须等于销售总数量，批次不能重复且不能超额。旧末列仍兼容为数量等于销售总数量的单批次分配。
+
+退款新版表头在末列追加 `return_allocations`，同样填写 JSON 数组，明确实际退回的原销售批次及数量；合计等于 returned_quantity。只有 restocked=true 才转回采购成本，但未入库退货同样占用可退数量。多批次销售发生退货时不猜测批次；旧退款文件仅在原销售是单批次时自动关联，纯退款返回数量为零则无需分配。
+
+独立人工期望：CNY 销售 3 件×10，批次 A 分配 1 件×4、B 分配 2 件×6，采购成本 16、毛利 14；退回 B 一件并退款 10、确认入库，毛利影响 -4。B 单价修正到 7 后，成本重估为 18、毛利 12，旧报表仍为 14。本段为待实现验收合同，不声明代码已通过。
+
 - `POST /api/v2/stores/{sid}/fx-rate-sets`：JSON 提交 `source`、`source_revision`、`rates`；每条 rate 包含 `base_currency`、`effective_date`、`rate`，报价币固定 CNY，方向为 1 单位原币兑换的人民币。保存后不覆盖旧版本；当前为手工导入接口，尚无 CSV 汇率上传或在线抓取。
 - `POST /api/v2/margin-reports`：JSON 提交 `store_ids`、`fx_rate_set_id`、`start`、`end`。日期按 UTC 左闭右开，店铺须同 owner、全部可读；当前上限 20 店、366 天、10000 条销售/退款事件。
 - 可选 `fixed_rate_date` 将销售、退款和采购全部按同一日期的指定版本汇率折算；省略时保持各业务日期口径。样例以 2026-11-02 固定 USD 7.10、EUR 8.00 后，毛利为 131.00 元。
