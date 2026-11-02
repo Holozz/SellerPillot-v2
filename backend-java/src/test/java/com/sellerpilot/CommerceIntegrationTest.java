@@ -84,6 +84,7 @@ class CommerceIntegrationTest {
         send("POST","/auth/register",Map.of("username","other","password","Password123!"),null);
         String other=(String)send("POST","/auth/login",Map.of("username","other","password","Password123!"),null).body.get("access_token");
         assertEquals(404,send("POST","/api/v2/stores/"+sid+"/metrics/query",query("sales"),other).status);
+        assertEquals(404,send("GET","/api/v2/stores/"+sid+"/source-imports",null,other).status);
         assertEquals(401,send("POST","/api/v2/stores/"+sid+"/metrics/query",query("sales"),null).status);
     }
     @Test void currencyBucketsAndExclusiveUpperBoundaryRemainIndependent()throws Exception{
@@ -145,6 +146,17 @@ class CommerceIntegrationTest {
         assertEquals(409,sourceCsv(sourceSid,"refunds",correctedRefund).status);
         assertEquals(200,sourceCsv(sourceSid,"refunds",correctedRefund,true).status);
         assertEquals(2,db.queryForObject("SELECT COUNT(*) FROM sales_refund_revisions WHERE store_id=?",Integer.class,sourceSid));
+        Reply revisions=send("GET","/api/v2/stores/"+sourceSid+"/source-revisions/refunds?key=A-REF-1",null,token);assertEquals(200,revisions.status);
+        List<Map<String,Object>> history=(List<Map<String,Object>>)revisions.body.get("rows");assertEquals(2,history.size());
+        assertEquals("3.000000",history.getFirst().get("refund_amount"));assertEquals("4.000000",history.getLast().get("refund_amount"));assertNotNull(history.getFirst().get("batch_id"));
+        Reply imports=send("GET","/api/v2/stores/"+sourceSid+"/source-imports?limit=1",null,token);assertEquals(200,imports.status);
+        List<Map<String,Object>> batches=(List<Map<String,Object>>)imports.body.get("rows");assertEquals(1,batches.size());
+        Object batchId=batches.getFirst().get("id");
+        Reply sourceRows=send("GET","/api/v2/stores/"+sourceSid+"/source-imports/"+batchId+"/rows",null,token);assertEquals(200,sourceRows.status);
+        assertInstanceOf(Map.class,((List<Map<String,Object>>)sourceRows.body.get("rows")).getFirst().get("normalized_fields"));
+        HttpResponse<byte[]> download=http.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:"+port+"/api/v2/stores/"+sourceSid+"/source-imports/"+batchId+"/file")).header("Authorization","Bearer "+token).GET().build(),HttpResponse.BodyHandlers.ofByteArray());
+        assertEquals(200,download.statusCode());assertArrayEquals(file.getBytes(StandardCharsets.UTF_8),download.body());
+        assertEquals(422,send("GET","/api/v2/stores/"+sourceSid+"/source-imports?limit=101",null,token).status);
         String noRefunds="platform_code,store_key,external_refund_id,external_line_id,confirmed_at,refund_amount,currency,returned_quantity,restocked\n";
         Reply empty=sourceCsv(sourceSid,"refunds",noRefunds);assertEquals(200,empty.status,empty.body.toString());assertEquals(0,empty.body.get("row_count"));
         String invalidLine="platform_code,store_key,external_line_id,external_order_id,external_sku,quantity,unit_price,discount_amount,currency,source_batch_id\nmarket-a,store-a,A-100-1,A-100,MUG-US,2,10.00,25.00,USD,A-BATCH-01\n";

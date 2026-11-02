@@ -18,4 +18,14 @@ public interface SourceImportMapper {
     @Select("SELECT id,source_row_number FROM source_import_rows WHERE store_id=#{sid} AND batch_id=#{batch} ORDER BY source_row_number")
     List<Map<String,Object>> rows(@Param("sid")long sid,@Param("batch")long batch);
     @Select("SELECT LAST_INSERT_ID()")long lastId();
+    @Select("SELECT id,kind,file_hash,adapter_version,status,source_row_count,created_by,created_at,published_at FROM source_import_batches WHERE store_id=#{sid} AND id>#{after} ORDER BY id LIMIT #{limit}")
+    List<Map<String,Object>> history(@Param("sid")long sid,@Param("after")long after,@Param("limit")int limit);
+    @Select("SELECT id,kind,file_hash,adapter_version,status,source_row_count,created_by,created_at,published_at FROM source_import_batches WHERE store_id=#{sid} AND id=#{batch}")
+    Map<String,Object> detail(@Param("sid")long sid,@Param("batch")long batch);
+    @Select("SELECT id,source_row_number,source_record_key,source_record_hash,raw_fields,normalized_fields,validation_status,validation_errors FROM source_import_rows WHERE store_id=#{sid} AND batch_id=#{batch} AND id>#{after} ORDER BY id LIMIT #{limit}")
+    List<Map<String,Object>> pageRows(@Param("sid")long sid,@Param("batch")long batch,@Param("after")long after,@Param("limit")int limit);
+    @Select("SELECT source_file FROM source_import_batches WHERE store_id=#{sid} AND id=#{batch}")
+    Map<String,Object> file(@Param("sid")long sid,@Param("batch")long batch);
+    @SelectProvider(type=RevisionSql.class,method="history")
+    List<Map<String,Object>> revisions(@Param("sid")long sid,@Param("kind")String kind,@Param("key")String key,@Param("after")long after,@Param("limit")int limit);
 }
