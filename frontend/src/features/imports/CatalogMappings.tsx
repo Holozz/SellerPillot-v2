@@ -23,7 +23,7 @@ export default function CatalogMappings({ storeId, onSessionExpired }: { storeId
       else setError(cause instanceof Error ? cause.message : '保存失败')
     } finally { if (pending.current === controller) { pending.current = null; if (!controller.signal.aborted) setBusy(false) } }
   }
-  useEffect(() => { void run(load); return () => pending.current?.abort() }, [storeId])
+  useEffect(() => { void run(load); return () => { pending.current?.abort(); pending.current = null } }, [storeId])
   return <section>
     <div className="section-heading"><div><h2>统一商品与店铺 SKU</h2><p>同一卖家的多家店铺可共用统一商品；来源 SKU 的映射按店铺保存。仅所有者可修改。</p></div><button className="quiet-button" disabled={busy} onClick={() => void run(load)}>刷新映射</button></div>
     {error && <p role="alert" className="error-message">{error}</p>}{notice && <p role="status">{notice}</p>}

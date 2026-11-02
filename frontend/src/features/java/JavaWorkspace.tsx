@@ -5,6 +5,7 @@ import ProductManager from '../products/ProductManager'
 import CsvImports from '../imports/CsvImports'
 import SourceHistory from '../imports/SourceHistory'
 import CatalogMappings from '../imports/CatalogMappings'
+import SourceUpload from '../imports/SourceUpload'
 import './java.css'
 
 interface Product{id:number;sku:string;title:string;version:number}
@@ -12,7 +13,7 @@ interface Proposal{id:string;product_id:number;product_version:number;original_t
 interface Fact{data_version:number;as_of:string;cache_hit:boolean;query_spec:{metric:string};rows:Record<string,string|number>[]}
 interface Member{username:string;role:string;active:boolean}
 interface Audit{id:number;action:string;target:string;created_at:string;user_id:number}
-type Panel='metrics'|'products'|'imports'|'catalog'|'history'|'actions'|'members'
+type Panel='metrics'|'products'|'imports'|'source-upload'|'catalog'|'history'|'actions'|'members'
 const states:Record<string,string>={pending:'待确认',applied:'已应用',rejected:'已拒绝',expired:'已过期'}
 
 export default function JavaWorkspace({store,onSessionExpired}:{store:Store;onSessionExpired:()=>void}){
@@ -39,7 +40,7 @@ export default function JavaWorkspace({store,onSessionExpired}:{store:Store;onSe
       <details className="java-query-note"><summary>查询口径与时间</summary><p>数据版本：{card.data_version} · 查询时间：{card.as_of} · {card.cache_hit?'复用当前版本结果':'本次计算结果'}</p></details></section>
   }
   return <div className="store-workspace"><nav className="workspace-navigation" aria-label="工作区导航">{([
-    ['metrics','经营分析'],['products','商品库存'],['catalog','统一商品映射'],['imports','订单导入'],['history','来源与修订'],['actions','操作审批'],['members','团队权限']
+    ['metrics','经营分析'],['products','商品库存'],['catalog','统一商品映射'],['source-upload','平台文件导入'],['imports','订单导入'],['history','来源与修订'],['actions','操作审批'],['members','团队权限']
   ] as [Panel,string][]).map(([id,label])=><button key={id} aria-pressed={panel===id} onClick={()=>setPanel(id)}>{label}</button>)}</nav><section className="workspace-page java-panel">
     {error&&<p className="error-message" role="alert">{error}</p>}{notice&&<p className="success-message" role="status">{notice}</p>}
     {panel==='metrics'&&<><div className="section-heading"><div><h2>核对经营数据</h2><p>按统一口径查看销售额、订单数、销量与库存。</p></div></div>
@@ -57,6 +58,7 @@ export default function JavaWorkspace({store,onSessionExpired}:{store:Store;onSe
     {panel==='imports'&&<CsvImports store={store} onSessionExpired={onSessionExpired}/>}
     {panel==='history'&&<SourceHistory storeId={store.id} onSessionExpired={onSessionExpired}/>}
     {panel==='catalog'&&<CatalogMappings storeId={store.id} onSessionExpired={onSessionExpired}/>}
+    {panel==='source-upload'&&<SourceUpload store={store} onSessionExpired={onSessionExpired}/>}
     {panel==='actions'&&<><div className="section-heading"><div><h2>商品变更审批</h2><p>核对原值与建议后确认，过期版本不会覆盖当前商品。</p></div><button className="quiet-button" disabled={busy} onClick={()=>act(refreshActions)}>刷新</button></div>
       <form className="java-query-form" onSubmit={e=>{e.preventDefault();const product=products.find(p=>p.id===Number(selected));if(!product)return;act(async()=>{
         await request(`${base}/proposals`,{method:'POST',body:JSON.stringify({product_id:product.id,product_version:product.version,title})});setTitle('');await refreshActions()
