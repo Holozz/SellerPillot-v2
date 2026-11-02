@@ -110,6 +110,35 @@ class CommerceIntegrationTest {
             .POST(HttpRequest.BodyPublishers.ofString(body,StandardCharsets.UTF_8)).build();
         HttpResponse<String> result=http.send(request,HttpResponse.BodyHandlers.ofString());return new Reply(result.statusCode(),json.readValue(result.body(),Map.class),List.of());
     }
+    Reply sourceCsv(long storeId,String kind,String data)throws Exception{
+        String boundary="SellerPilotSourceBoundary";String body="--"+boundary+"\r\nContent-Disposition: form-data; name=\"file\"; filename=\"source.csv\"\r\nContent-Type: text/csv\r\n\r\n"+data+"\r\n--"+boundary+"--\r\n";
+        HttpRequest request=HttpRequest.newBuilder(URI.create("http://127.0.0.1:"+port+"/api/v2/stores/"+storeId+"/source-imports/"+kind))
+            .header("Authorization","Bearer "+token).header("Content-Type","multipart/form-data; boundary="+boundary)
+            .POST(HttpRequest.BodyPublishers.ofString(body,StandardCharsets.UTF_8)).build();
+        HttpResponse<String> result=http.send(request,HttpResponse.BodyHandlers.ofString());return new Reply(result.statusCode(),json.readValue(result.body(),Map.class),List.of());
+    }
+    @Test void sourceImportPreservesOriginalFileAndDeduplicatesThePublishedBatch()throws Exception{
+        Reply store=send("POST","/stores",Map.of("name","Market A","platform","market-a","source_store_key","store-a"),token);assertEquals(201,store.status);
+        long sourceSid=((Number)store.body.get("id")).longValue();
+        String file="platform_code,store_key,external_order_id,ordered_at,paid_at,status,currency\nmarket-a,store-a,A-100,2026-11-01T08:00:00+00:00,2026-11-01T08:05:00+00:00,paid,USD\n";
+        Reply first=sourceCsv(sourceSid,"orders",file);assertEquals(200,first.status,first.body.toString());assertEquals("PUBLISHED",first.body.get("status"));
+        assertEquals(1,first.body.get("row_count"));assertEquals(false,first.body.get("duplicate"));
+        assertEquals(1,db.queryForObject("SELECT COUNT(*) FROM source_import_rows WHERE store_id=?",Integer.class,sourceSid));
+        assertEquals(file.trim(),new String(db.queryForObject("SELECT source_file FROM source_import_batches WHERE store_id=?",byte[].class,sourceSid),StandardCharsets.UTF_8).trim());
+        Reply repeated=sourceCsv(sourceSid,"orders",file);assertEquals(true,repeated.body.get("duplicate"));assertEquals(first.body.get("import_id"),repeated.body.get("import_id"));
+        String wrongStore=file.replace("store-a","store-b");assertEquals(422,sourceCsv(sourceSid,"orders",wrongStore).status);
+        assertEquals(1,db.queryForObject("SELECT COUNT(*) FROM source_import_batches WHERE store_id=?",Integer.class,sourceSid));
+        String noRefunds="platform_code,store_key,external_refund_id,external_line_id,confirmed_at,refund_amount,currency,returned_quantity,restocked\n";
+        Reply empty=sourceCsv(sourceSid,"refunds",noRefunds);assertEquals(200,empty.status,empty.body.toString());assertEquals(0,empty.body.get("row_count"));
+        String invalidLine="platform_code,store_key,external_line_id,external_order_id,external_sku,quantity,unit_price,discount_amount,currency,source_batch_id\nmarket-a,store-a,A-100-1,A-100,MUG-US,2,10.00,25.00,USD,A-BATCH-01\n";
+        assertEquals(422,sourceCsv(sourceSid,"order-items",invalidLine).status);
+        assertEquals(0,db.queryForObject("SELECT COUNT(*) FROM source_import_batches WHERE store_id=? AND kind='order-items'",Integer.class,sourceSid));
+        Reply marketB=send("POST","/stores",Map.of("name","Market B","platform","market-b","source_store_key","store-b"),token);assertEquals(201,marketB.status);
+        long marketBSid=((Number)marketB.body.get("id")).longValue();
+        String marketBOrder="platform_code,store_key,external_order_id,order_timestamp,payment_timestamp,order_state,order_currency\nmarket-b,store-b,B-200,2026-11-02T09:00:00+00:00,2026-11-02T09:10:00+00:00,settled,EUR\n";
+        assertEquals(200,sourceCsv(marketBSid,"orders",marketBOrder).status);
+        assertEquals("paid",db.queryForObject("SELECT JSON_UNQUOTE(JSON_EXTRACT(normalized_fields,'$.status')) FROM source_import_rows WHERE store_id=?",String.class,marketBSid));
+    }
     @Test void csvDeduplicatesFilesAndUpdatesBusinessKeysAtomically()throws Exception{
         String header="external_order_id,ordered_at,status,currency\n";
         String file=header+"O2,2026-10-02T08:00:00+08:00,paid,USD\n";

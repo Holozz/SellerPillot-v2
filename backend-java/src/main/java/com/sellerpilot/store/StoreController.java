@@ -16,11 +16,12 @@ import com.sellerpilot.common.Rows;
 public class StoreController {
     private final StoreMapper stores;private final StoreAccess access;private final UserMapper users;
     public StoreController(StoreMapper stores,StoreAccess access,UserMapper users){this.stores=stores;this.access=access;this.users=users;}
-    public record Create(@NotBlank @Size(max=100)String name,@Pattern(regexp="amazon|shopify") @NotNull String platform){}
+    public record Create(@NotBlank @Size(max=100)String name,@Pattern(regexp="amazon|shopify|market-a|market-b") @NotNull String platform,
+                         @Size(max=128)String source_store_key){}
     public record Member(@NotBlank String username,@Pattern(regexp="viewer|operator") @NotNull String role,Boolean active){}
     @GetMapping({"/stores","/api/stores"})public List<Map<String,Object>> list(@AuthenticationPrincipal Long user){return stores.list(user);}
     @PostMapping({"/stores","/api/stores"})@ResponseStatus(HttpStatus.CREATED)@Transactional
-    public Map<String,Object> create(@AuthenticationPrincipal Long user,@Valid @RequestBody Create body){stores.insert(user,body.name,body.platform);return stores.get(stores.lastId());}
+    public Map<String,Object> create(@AuthenticationPrincipal Long user,@Valid @RequestBody Create body){stores.insert(user,body.name,body.platform,body.source_store_key);return stores.get(stores.lastId());}
     @GetMapping({"/stores/{sid}","/api/stores/{sid}"})public Map<String,Object> get(@AuthenticationPrincipal Long user,@PathVariable long sid){return access.require(user,sid,"read",false);}
     @GetMapping("/api/v2/stores/{sid}/members")public List<Map<String,Object>> members(@AuthenticationPrincipal Long user,@PathVariable long sid){access.require(user,sid,"members",false);return stores.members(sid);}
     @PutMapping("/api/v2/stores/{sid}/members")@Transactional

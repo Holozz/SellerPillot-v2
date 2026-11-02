@@ -7,6 +7,7 @@ export interface Store {
   id: number
   name: string
   platform: string
+  source_store_key: string
   owner_id: number | null
 }
 

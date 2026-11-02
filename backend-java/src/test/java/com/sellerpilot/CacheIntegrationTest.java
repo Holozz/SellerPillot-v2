@@ -37,7 +37,7 @@ class CacheIntegrationTest {
     @BeforeEach void fixture(){
         for(String table:List.of("procurement_batch_allocations","procurement_batch_revisions","store_product_mapping_revisions","catalog_products","source_import_rows","source_import_batches","fx_rates","fx_rate_sets","audit_logs","action_executions","action_proposals","import_batches","order_items","orders","products","store_memberships","stores","users"))db.update("DELETE FROM "+table);
         db.update("INSERT INTO users(username,password_hash) VALUES('cache-owner','unused')");user=db.queryForObject("SELECT id FROM users",Long.class);
-        db.update("INSERT INTO stores(owner_id,name,platform) VALUES(?,'Cache fixture','amazon')",user);sid=db.queryForObject("SELECT id FROM stores",Long.class);
+        db.update("INSERT INTO stores(owner_id,name,platform,source_store_key) VALUES(?,'Cache fixture','amazon','cache-fixture')",user);sid=db.queryForObject("SELECT id FROM stores",Long.class);
         db.update("INSERT INTO products(store_id,sku,title,price,currency) VALUES(?,'JAR-001','Jar',10,'USD')",sid);long pid=db.queryForObject("SELECT id FROM products",Long.class);
         db.update("INSERT INTO orders(store_id,external_order_id,ordered_at,status,currency) VALUES(?,'O1','2026-10-02','paid','USD')",sid);long oid=db.queryForObject("SELECT id FROM orders",Long.class);
         db.update("INSERT INTO order_items(store_id,order_id,product_id,line_no,quantity,unit_price,refund_amount) VALUES(?,?,?,1,1,10,0)",sid,oid,pid);

@@ -14,8 +14,8 @@ public interface StoreMapper {
     String lockedRole(@Param("sid")long sid,@Param("uid")long uid);
     @Select("SELECT s.* FROM stores s WHERE s.owner_id=#{uid} OR EXISTS(SELECT 1 FROM store_memberships m WHERE m.store_id=s.id AND m.user_id=#{uid} AND m.active=TRUE) ORDER BY s.id LIMIT 100")
     List<Map<String,Object>> list(long uid);
-    @Insert("INSERT INTO stores(owner_id,name,platform) VALUES(#{uid},#{name},#{platform})")
-    void insert(@Param("uid")long uid,@Param("name")String name,@Param("platform")String platform);
+    @Insert("INSERT INTO stores(owner_id,name,platform,source_store_key) VALUES(#{uid},#{name},#{platform},COALESCE(#{sourceStoreKey},#{name}))")
+    void insert(@Param("uid")long uid,@Param("name")String name,@Param("platform")String platform,@Param("sourceStoreKey")String sourceStoreKey);
     @Select("SELECT LAST_INSERT_ID()")long lastId();
     @Update("UPDATE stores SET data_version=data_version+1 WHERE id=#{sid}")void bump(long sid);
     @Select("SELECT m.*,u.username FROM store_memberships m JOIN users u ON u.id=m.user_id WHERE m.store_id=#{sid}")

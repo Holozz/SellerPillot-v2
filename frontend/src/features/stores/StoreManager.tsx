@@ -15,6 +15,7 @@ export default function StoreManager({ stores, selectedId, onSelect, onCreated, 
   const [creating, setCreating] = useState(false)
   const [name, setName] = useState('')
   const [platform, setPlatform] = useState('amazon')
+  const [sourceStoreKey, setSourceStoreKey] = useState('')
   const [details, setDetails] = useState<Store | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -40,10 +41,10 @@ export default function StoreManager({ stores, selectedId, onSelect, onCreated, 
   function handleCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     void runStoreAction(async signal => {
-      const store = await createStore(name.trim(), platform, signal)
+      const store = await createStore(name.trim(), platform, sourceStoreKey.trim() || name.trim(), signal)
       if (signal.aborted) return
       // 将服务器返回的新店铺交给App选中，不在前端猜测ID或所有者。
-      setCreating(false); setName(''); onCreated(store)
+      setCreating(false); setName(''); setSourceStoreKey(''); onCreated(store)
     })
   }
 
@@ -62,10 +63,11 @@ export default function StoreManager({ stores, selectedId, onSelect, onCreated, 
       {stores.length === 100 && <span className="hint">当前最多显示100家店铺</span>}
     </div>
     {error && <p className="error-message" role="alert">{error}</p>}
-    {details && <div className="store-detail" role="status"><strong>{details.name}</strong><span>店铺 #{details.id}</span><span>{details.platform}</span></div>}
+    {details && <div className="store-detail" role="status"><strong>{details.name}</strong><span>店铺 #{details.id}</span><span>{details.platform}</span><span>来源店铺标识：{details.source_store_key}</span></div>}
     {creating && <form className="editor-form store-create" onSubmit={handleCreate}>
       <label>店铺名称<input required maxLength={100} value={name} disabled={busy} onChange={event => setName(event.target.value)} /></label>
-      <label>平台<select value={platform} disabled={busy} onChange={event => setPlatform(event.target.value)}><option value="amazon">Amazon</option><option value="shopify">Shopify</option></select></label>
+      <label>平台<select value={platform} disabled={busy} onChange={event => setPlatform(event.target.value)}><option value="amazon">Amazon</option><option value="shopify">Shopify</option><option value="market-a">Market A</option><option value="market-b">Market B</option></select></label>
+      <label>来源店铺标识<input maxLength={128} value={sourceStoreKey} disabled={busy} onChange={event => setSourceStoreKey(event.target.value)} placeholder="留空时使用店铺名称" /></label>
       <button className="primary-button" disabled={busy || !name.trim()}>{busy ? '正在保存…' : '保存店铺'}</button>
       <button className="quiet-button" type="button" disabled={busy} onClick={() => setCreating(false)}>取消</button>
     </form>}
