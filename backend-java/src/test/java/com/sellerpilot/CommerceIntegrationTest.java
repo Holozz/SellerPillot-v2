@@ -41,7 +41,7 @@ class CommerceIntegrationTest {
         return new Reply(response.statusCode(),json.readValue(response.body(),Map.class),List.of());
     }
     @BeforeEach void fixtures()throws Exception{
-        for(String table:List.of("procurement_batch_allocations","procurement_batch_revisions","store_product_mapping_revisions","catalog_products","source_import_rows","source_import_batches","fx_rates","fx_rate_sets","audit_logs","action_executions","action_proposals","import_batches","order_items","orders","products","store_memberships","stores","users"))db.update("DELETE FROM "+table);
+        for(String table:List.of("sales_refund_revisions","sales_line_revisions","sales_order_revisions","procurement_batch_allocations","procurement_batch_revisions","store_product_mapping_revisions","catalog_products","source_import_rows","source_import_batches","fx_rates","fx_rate_sets","audit_logs","action_executions","action_proposals","import_batches","order_items","orders","products","store_memberships","stores","users"))db.update("DELETE FROM "+table);
         assertEquals(201,send("POST","/auth/register",Map.of("username","owner","password","Password123!"),null).status);
         token=(String)send("POST","/auth/login",Map.of("username","owner","password","Password123!"),null).body.get("access_token");
         Reply store=send("POST","/stores",Map.of("name","Fixture","platform","amazon"),token);assertEquals(201,store.status,store.body.toString());
@@ -110,9 +110,11 @@ class CommerceIntegrationTest {
             .POST(HttpRequest.BodyPublishers.ofString(body,StandardCharsets.UTF_8)).build();
         HttpResponse<String> result=http.send(request,HttpResponse.BodyHandlers.ofString());return new Reply(result.statusCode(),json.readValue(result.body(),Map.class),List.of());
     }
-    Reply sourceCsv(long storeId,String kind,String data)throws Exception{
+    Reply sourceCsv(long storeId,String kind,String data)throws Exception{return sourceCsv(storeId,kind,data,false);}
+    Reply sourceCsv(long storeId,String kind,String data,boolean confirmConflicts)throws Exception{
         String boundary="SellerPilotSourceBoundary";String body="--"+boundary+"\r\nContent-Disposition: form-data; name=\"file\"; filename=\"source.csv\"\r\nContent-Type: text/csv\r\n\r\n"+data+"\r\n--"+boundary+"--\r\n";
-        HttpRequest request=HttpRequest.newBuilder(URI.create("http://127.0.0.1:"+port+"/api/v2/stores/"+storeId+"/source-imports/"+kind))
+        String url="http://127.0.0.1:"+port+"/api/v2/stores/"+storeId+"/source-imports/"+kind+(confirmConflicts?"?confirm_conflicts=true":"");
+        HttpRequest request=HttpRequest.newBuilder(URI.create(url))
             .header("Authorization","Bearer "+token).header("Content-Type","multipart/form-data; boundary="+boundary)
             .POST(HttpRequest.BodyPublishers.ofString(body,StandardCharsets.UTF_8)).build();
         HttpResponse<String> result=http.send(request,HttpResponse.BodyHandlers.ofString());return new Reply(result.statusCode(),json.readValue(result.body(),Map.class),List.of());
@@ -128,16 +130,63 @@ class CommerceIntegrationTest {
         Reply repeated=sourceCsv(sourceSid,"orders",file);assertEquals(true,repeated.body.get("duplicate"));assertEquals(first.body.get("import_id"),repeated.body.get("import_id"));
         String wrongStore=file.replace("store-a","store-b");assertEquals(422,sourceCsv(sourceSid,"orders",wrongStore).status);
         assertEquals(1,db.queryForObject("SELECT COUNT(*) FROM source_import_batches WHERE store_id=?",Integer.class,sourceSid));
+        Reply catalogProduct=send("POST","/api/v2/stores/"+sourceSid+"/catalog-products",Map.of("internal_sku","MUG-01","title","Travel Mug","base_unit","piece"),token);assertEquals(201,catalogProduct.status);
+        assertEquals(200,send("PUT","/api/v2/stores/"+sourceSid+"/product-mappings/MUG-US",Map.of("internal_sku","MUG-01"),token).status);
+        String lot="platform_code,store_key,source_batch_id,external_sku,received_at,quantity,unit_purchase_cost,currency\nmarket-a,store-a,A-BATCH-01,MUG-US,2026-10-31T08:00:00+00:00,10,4.00,USD\n";
+        assertEquals(200,sourceCsv(sourceSid,"procurement-batches",lot).status);
+        String line="platform_code,store_key,external_line_id,external_order_id,external_sku,quantity,unit_price,discount_amount,currency,source_batch_id\nmarket-a,store-a,A-100-1,A-100,MUG-US,2,10.00,2.00,USD,A-BATCH-01\n";
+        assertEquals(200,sourceCsv(sourceSid,"order-items",line).status);
+        assertEquals(1,db.queryForObject("SELECT COUNT(*) FROM sales_order_revisions WHERE store_id=?",Integer.class,sourceSid));
+        assertEquals(1,db.queryForObject("SELECT COUNT(*) FROM sales_line_revisions WHERE store_id=?",Integer.class,sourceSid));
+        assertEquals("2.000000",db.queryForObject("SELECT quantity FROM procurement_batch_allocations WHERE store_id=?",String.class,sourceSid));
+        String refund="platform_code,store_key,external_refund_id,external_line_id,confirmed_at,refund_amount,currency,returned_quantity,restocked\nmarket-a,store-a,A-REF-1,A-100-1,2026-11-03T08:00:00+00:00,3.00,USD,1,true\n";
+        assertEquals(200,sourceCsv(sourceSid,"refunds",refund).status);
+        String correctedRefund=refund.replace(",3.00,",",4.00,");
+        assertEquals(409,sourceCsv(sourceSid,"refunds",correctedRefund).status);
+        assertEquals(200,sourceCsv(sourceSid,"refunds",correctedRefund,true).status);
+        assertEquals(2,db.queryForObject("SELECT COUNT(*) FROM sales_refund_revisions WHERE store_id=?",Integer.class,sourceSid));
         String noRefunds="platform_code,store_key,external_refund_id,external_line_id,confirmed_at,refund_amount,currency,returned_quantity,restocked\n";
         Reply empty=sourceCsv(sourceSid,"refunds",noRefunds);assertEquals(200,empty.status,empty.body.toString());assertEquals(0,empty.body.get("row_count"));
         String invalidLine="platform_code,store_key,external_line_id,external_order_id,external_sku,quantity,unit_price,discount_amount,currency,source_batch_id\nmarket-a,store-a,A-100-1,A-100,MUG-US,2,10.00,25.00,USD,A-BATCH-01\n";
         assertEquals(422,sourceCsv(sourceSid,"order-items",invalidLine).status);
-        assertEquals(0,db.queryForObject("SELECT COUNT(*) FROM source_import_batches WHERE store_id=? AND kind='order-items'",Integer.class,sourceSid));
+        assertEquals(1,db.queryForObject("SELECT COUNT(*) FROM source_import_batches WHERE store_id=? AND kind='order-items'",Integer.class,sourceSid));
         Reply marketB=send("POST","/stores",Map.of("name","Market B","platform","market-b","source_store_key","store-b"),token);assertEquals(201,marketB.status);
         long marketBSid=((Number)marketB.body.get("id")).longValue();
         String marketBOrder="platform_code,store_key,external_order_id,order_timestamp,payment_timestamp,order_state,order_currency\nmarket-b,store-b,B-200,2026-11-02T09:00:00+00:00,2026-11-02T09:10:00+00:00,settled,EUR\n";
         assertEquals(200,sourceCsv(marketBSid,"orders",marketBOrder).status);
         assertEquals("paid",db.queryForObject("SELECT JSON_UNQUOTE(JSON_EXTRACT(normalized_fields,'$.status')) FROM source_import_rows WHERE store_id=?",String.class,marketBSid));
+        assertEquals(200,send("PUT","/api/v2/stores/"+marketBSid+"/product-mappings/MUG-EU",Map.of("internal_sku","MUG-01"),token).status);
+        String lotB="platform_code,store_key,purchase_lot,merchant_sku,receipt_timestamp,received_units,cost_per_unit,cost_currency\nmarket-b,store-b,B-BATCH-09,MUG-EU,2026-10-30T10:00:00+00:00,5,12.50,EUR\n";
+        assertEquals(200,sourceCsv(marketBSid,"procurement-batches",lotB).status);
+        String lineB="platform_code,store_key,line_key,order_number,merchant_sku,units,unit_sale_price,line_discount,price_currency,purchase_lot\nmarket-b,store-b,B-200-1,B-200,MUG-EU,1,20.00,0.00,EUR,B-BATCH-09\n";
+        assertEquals(200,sourceCsv(marketBSid,"order-items",lineB).status);
+        assertEquals(2,db.queryForObject("SELECT COUNT(*) FROM sales_line_revisions",Integer.class));
+    }
+    @Test void sourceCorrectionsRequireConfirmationAndFailedLineBatchRollsBackAtomically()throws Exception{
+        Reply store=send("POST","/stores",Map.of("name","Revision store","platform","market-a","source_store_key","revision-store"),token);assertEquals(201,store.status);
+        long sourceSid=((Number)store.body.get("id")).longValue();
+        String orderHeader="platform_code,store_key,external_order_id,ordered_at,paid_at,status,currency\n";
+        String order=orderHeader+"market-a,revision-store,R-1,2026-11-01T08:00:00+00:00,2026-11-01T08:05:00+00:00,paid,USD\n";
+        assertEquals(200,sourceCsv(sourceSid,"orders",order).status);
+        String corrected=order.replace(",paid,USD",",shipped,USD");
+        assertEquals(409,sourceCsv(sourceSid,"orders",corrected).status);
+        assertEquals(1,db.queryForObject("SELECT COUNT(*) FROM sales_order_revisions WHERE store_id=?",Integer.class,sourceSid));
+        assertEquals(200,sourceCsv(sourceSid,"orders",corrected,true).status);
+        assertEquals(2,db.queryForObject("SELECT COUNT(*) FROM sales_order_revisions WHERE store_id=?",Integer.class,sourceSid));
+        assertEquals(201,send("POST","/api/v2/stores/"+sourceSid+"/catalog-products",Map.of("internal_sku","R-MUG","title","Revision Mug","base_unit","piece"),token).status);
+        assertEquals(200,send("PUT","/api/v2/stores/"+sourceSid+"/product-mappings/R-SKU",Map.of("internal_sku","R-MUG"),token).status);
+        String batch="platform_code,store_key,source_batch_id,external_sku,received_at,quantity,unit_purchase_cost,currency\nmarket-a,revision-store,R-BATCH,R-SKU,2026-10-31T08:00:00+00:00,2,4.00,USD\n";
+        assertEquals(200,sourceCsv(sourceSid,"procurement-batches",batch).status);
+        String lineHeader="platform_code,store_key,external_line_id,external_order_id,external_sku,quantity,unit_price,discount_amount,currency,source_batch_id\n";
+        String tooMany=lineHeader+"market-a,revision-store,R-LINE,R-1,R-SKU,3,10.00,0.00,USD,R-BATCH\n";
+        assertEquals(409,sourceCsv(sourceSid,"order-items",tooMany).status);
+        assertEquals(0,db.queryForObject("SELECT COUNT(*) FROM source_import_batches WHERE store_id=? AND kind='order-items'",Integer.class,sourceSid));
+        String valid=tooMany.replace(",3,10.00,",",2,10.00,");assertEquals(200,sourceCsv(sourceSid,"order-items",valid).status);
+        String revised=valid.replace(",2,10.00,",",1,11.00,");
+        assertEquals(409,sourceCsv(sourceSid,"order-items",revised).status);
+        assertEquals(200,sourceCsv(sourceSid,"order-items",revised,true).status);
+        assertEquals(2,db.queryForObject("SELECT COUNT(*) FROM sales_line_revisions WHERE store_id=?",Integer.class,sourceSid));
+        assertEquals("1.000000",db.queryForObject("SELECT quantity FROM procurement_batch_allocations WHERE store_id=? ORDER BY id DESC LIMIT 1",String.class,sourceSid));
     }
     @Test void csvDeduplicatesFilesAndUpdatesBusinessKeysAtomically()throws Exception{
         String header="external_order_id,ordered_at,status,currency\n";

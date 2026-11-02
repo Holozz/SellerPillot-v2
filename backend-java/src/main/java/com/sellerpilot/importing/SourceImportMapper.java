@@ -1,6 +1,7 @@
 package com.sellerpilot.importing;
 
 import java.util.List;
+import java.util.Map;
 import org.apache.ibatis.annotations.*;
 
 @Mapper
@@ -14,5 +15,7 @@ public interface SourceImportMapper {
     void insertRows(@Param("sid")long sid,@Param("batch")long batch,@Param("rows")List<SourceImportService.StoredRow> rows);
     @Update("UPDATE source_import_batches SET status='PUBLISHED',published_at=UTC_TIMESTAMP(6) WHERE id=#{id} AND store_id=#{sid} AND status='STAGING'")
     void publish(@Param("sid")long sid,@Param("id")long id);
+    @Select("SELECT id,source_row_number FROM source_import_rows WHERE store_id=#{sid} AND batch_id=#{batch} ORDER BY source_row_number")
+    List<Map<String,Object>> rows(@Param("sid")long sid,@Param("batch")long batch);
     @Select("SELECT LAST_INSERT_ID()")long lastId();
 }

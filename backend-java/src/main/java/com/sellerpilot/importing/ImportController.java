@@ -19,10 +19,11 @@ public class ImportController {
         return service.apply(user,sid,parsed);
     }
     @PostMapping("/api/v2/stores/{sid}/source-imports/{kind}")
-    public Map<String,Object> sourceUpload(@AuthenticationPrincipal Long user,@PathVariable long sid,@PathVariable String kind,@RequestParam MultipartFile file)throws IOException{
+    public Map<String,Object> sourceUpload(@AuthenticationPrincipal Long user,@PathVariable long sid,@PathVariable String kind,@RequestParam MultipartFile file,
+                                           @RequestParam(name="confirm_conflicts",defaultValue="false")boolean confirmConflicts)throws IOException{
         if(file.getOriginalFilename()==null||!file.getOriginalFilename().toLowerCase().endsWith(".csv"))throw new ApiException(422,"请上传CSV文件");
         byte[] bytes=file.getBytes();Map<String,Object> store=access.require(user,sid,"members",false);
         PlatformCsvParser.Parsed parsed=platformParser.parse(kind,String.valueOf(store.get("platform")),String.valueOf(store.get("source_store_key")),bytes);
-        return sourceImports.apply(user,sid,parsed);
+        return sourceImports.apply(user,sid,parsed,confirmConflicts);
     }
 }
