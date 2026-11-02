@@ -31,16 +31,17 @@ class CommerceIntegrationTest {
     @Autowired JsonMapper json;
     final HttpClient http=HttpClient.newHttpClient();
     String token;long sid;
-    record Reply(int status,Map<String,Object> body){}
+    record Reply(int status,Map<String,Object> body,List<?> rows){}
     Reply send(String method,String path,Object body,String token)throws Exception{
         HttpRequest.Builder builder=HttpRequest.newBuilder(URI.create("http://127.0.0.1:"+port+path)).header("Content-Type","application/json");
         if(token!=null)builder.header("Authorization","Bearer "+token);
         builder.method(method,body==null?HttpRequest.BodyPublishers.noBody():HttpRequest.BodyPublishers.ofString(json.writeValueAsString(body)));
         HttpResponse<String> response=http.send(builder.build(),HttpResponse.BodyHandlers.ofString());
-        return new Reply(response.statusCode(),json.readValue(response.body(),Map.class));
+        if(response.body().startsWith("["))return new Reply(response.statusCode(),Map.of(),json.readValue(response.body(),List.class));
+        return new Reply(response.statusCode(),json.readValue(response.body(),Map.class),List.of());
     }
     @BeforeEach void fixtures()throws Exception{
-        for(String table:List.of("audit_logs","action_executions","action_proposals","import_batches","order_items","orders","products","store_memberships","stores","users"))db.update("DELETE FROM "+table);
+        for(String table:List.of("procurement_batch_allocations","procurement_batch_revisions","store_product_mapping_revisions","catalog_products","source_import_rows","source_import_batches","fx_rates","fx_rate_sets","audit_logs","action_executions","action_proposals","import_batches","order_items","orders","products","store_memberships","stores","users"))db.update("DELETE FROM "+table);
         assertEquals(201,send("POST","/auth/register",Map.of("username","owner","password","Password123!"),null).status);
         token=(String)send("POST","/auth/login",Map.of("username","owner","password","Password123!"),null).body.get("access_token");
         Reply store=send("POST","/stores",Map.of("name","Fixture","platform","amazon"),token);assertEquals(201,store.status,store.body.toString());
@@ -60,6 +61,24 @@ class CommerceIntegrationTest {
         Reply orders=send("POST","/api/v2/stores/"+sid+"/metrics/query",query("orders"),token);
         assertEquals(1,((Number)((List<Map<String,Object>>)orders.body.get("rows")).getFirst().get("value")).intValue());
         assertEquals("REPEATABLE-READ",db.queryForObject("SELECT @@transaction_isolation",String.class));
+    }
+    @Test void catalogSkuMappingsAreOwnerScopedAndVersioned()throws Exception{
+        Reply created=send("POST","/api/v2/stores/"+sid+"/catalog-products",Map.of("internal_sku","MUG-01","title","Travel Mug","base_unit","piece"),token);
+        assertEquals(201,created.status,created.body.toString());
+        Reply first=send("PUT","/api/v2/stores/"+sid+"/product-mappings/MUG-US",Map.of("internal_sku","MUG-01"),token);
+        assertEquals(200,first.status,first.body.toString());assertEquals(1,((Number)first.body.get("mapping_version")).intValue());
+        Reply revised=send("PUT","/api/v2/stores/"+sid+"/product-mappings/MUG-US",Map.of("internal_sku","MUG-01"),token);
+        assertEquals(2,((Number)revised.body.get("mapping_version")).intValue());
+        Reply secondStore=send("POST","/stores",Map.of("name","Second","platform","shopify"),token);assertEquals(201,secondStore.status);
+        long sid2=((Number)secondStore.body.get("id")).longValue();
+        Reply crossStore=send("PUT","/api/v2/stores/"+sid2+"/product-mappings/MUG-EU",Map.of("internal_sku","MUG-01"),token);
+        assertEquals(200,crossStore.status,crossStore.body.toString());
+        assertEquals(1,((Number)crossStore.body.get("mapping_version")).intValue());
+        assertEquals(1,send("GET","/api/v2/stores/"+sid2+"/product-mappings",null,token).rows.size());
+        send("POST","/auth/register",Map.of("username","catalog-other","password","Password123!"),null);
+        String other=(String)send("POST","/auth/login",Map.of("username","catalog-other","password","Password123!"),null).body.get("access_token");
+        Reply otherStore=send("POST","/stores",Map.of("name","Other owner","platform","amazon"),other);assertEquals(201,otherStore.status);
+        assertEquals(404,send("PUT","/api/v2/stores/"+otherStore.body.get("id")+"/product-mappings/MUG-OTHER",Map.of("internal_sku","MUG-01"),other).status);
     }
     @Test void crossStoreAccessIsRejected()throws Exception{
         send("POST","/auth/register",Map.of("username","other","password","Password123!"),null);
@@ -89,7 +108,7 @@ class CommerceIntegrationTest {
         HttpRequest request=HttpRequest.newBuilder(URI.create("http://127.0.0.1:"+port+"/stores/"+sid+"/imports/"+kind))
             .header("Authorization","Bearer "+token).header("Content-Type","multipart/form-data; boundary="+boundary)
             .POST(HttpRequest.BodyPublishers.ofString(body,StandardCharsets.UTF_8)).build();
-        HttpResponse<String> result=http.send(request,HttpResponse.BodyHandlers.ofString());return new Reply(result.statusCode(),json.readValue(result.body(),Map.class));
+        HttpResponse<String> result=http.send(request,HttpResponse.BodyHandlers.ofString());return new Reply(result.statusCode(),json.readValue(result.body(),Map.class),List.of());
     }
     @Test void csvDeduplicatesFilesAndUpdatesBusinessKeysAtomically()throws Exception{
         String header="external_order_id,ordered_at,status,currency\n";
