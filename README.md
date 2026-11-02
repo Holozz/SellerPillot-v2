@@ -2,7 +2,7 @@
 
 面向小型卖家的多店铺运营管理项目，当前主线为 Java 后端和 React 前端。用户可管理商品、导入订单、核对经营统计，并通过人工审批确认标题修改。
 
-项目围绕三类问题设计：多明细订单容易重复计数或混淆币种/退款；重复查询会放大数据库聚合开销；多人重试或并发确认可能重复执行或覆盖新商品状态。实现与验证边界见 [Java 模块说明](backend-java/README.md)、[实施记录](docs/Java改造实施记录-2026-10-25.md) 和 [按目录进度](docs/progress/2026-10-26-java-migration.md)。
+当前实现与运行边界见 [Java 模块说明](backend-java/README.md)。后续任务统一维护在 [实施方案](docs/实施方案.md)：新增跨店经营汇总与贡献利润、报表高性能及可重试后台任务、受控 AI 经营分析。上述扩展尚未实现；任务范围、实施顺序和验收标准以该方案为准。
 
 ## 技术栈
 
@@ -35,6 +35,7 @@ docker compose --env-file .env.java -f compose.java.yaml --profile app stop
 - `compose.java.yaml`、`deploy/java/`：当前 Docker Compose 服务定义。
 - `experiments/java-*`：合成数据、负载、双 JVM/Redis 故障和证据采集工具。
 - `docs/verification/java/`：本机验证材料，模拟负载不代表生产 SLA。
-- `docs/`：设计、迁移和验证记录；部分内容描述已经退役的旧 Python 代码。
+- `docs/实施方案.md`：唯一更新方案、任务清单与验收入口。
+- `docs/verification/`：历史和后续验证证据；旧实验不能作为新功能的验收结果。
 
 Java CI 配置见 `.github/workflows/verify.yml`。本地验证结果和远程 GitHub Actions 结果分别记录。

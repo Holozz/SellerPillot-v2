@@ -1,0 +1,25 @@
+.csv-panel { margin-top: 30px; background: white; border: 1px solid var(--line); border-radius: 2px; padding: 28px; }
+.csv-form { margin: 20px 0; }
+.csv-form > label { display: block; font-size: 14px; margin: 18px 0 9px; }
+.csv-form select { min-height: 42px; min-width: 180px; padding: 8px 12px; border: 1px solid #acbdc8; border-radius: 2px; color: inherit; background: white; font: inherit; }
+.csv-header-label { margin: 20px 0 8px; font-size: 13px; color: var(--muted); }
+.csv-header { max-width: 100%; margin: 0; padding: 12px; white-space: pre-wrap; overflow-wrap: anywhere; background: #f0f3f8; border-radius: 2px; font-size: 13px; line-height: 1.7; }
+.csv-form input[type="file"] { display: block; max-width: 100%; color: var(--muted); font-size: 13px; }
+.csv-form input[type="file"]::file-selector-button { padding: 10px 14px; margin-right: 12px; border: 1px solid #acbdc8; border-radius: 2px; background: white; color: #172b46; cursor: pointer; }
+.csv-form select:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+.csv-submit { width: auto; padding: 0 22px; margin-top: 14px; }
+.csv-errors { max-height: 320px; overflow: auto; margin: 18px 0; border: 1px solid var(--line); border-radius: 2px; }
+.csv-error-count { margin: 0; padding: 10px 12px; }
+.csv-errors table { width: 100%; border-collapse: collapse; text-align: left; font-size: 13px; }
+.csv-errors th { background: #f0f3f8; font-weight: 600; }
+.csv-errors th, .csv-errors td { padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; overflow-wrap: anywhere; }
+.csv-errors td:first-child { white-space: nowrap; }
+.csv-result { background: #eaf6ef; color: #19634d; border-radius: 2px; padding: 18px; margin: 20px 0; }
+.csv-result h3 { font-size: 16px; margin: 0 0 16px; }
+.csv-result dl { display: flex; gap: 28px; flex-wrap: wrap; margin: 0; }
+.csv-result dt { font-size: 12px; }
+.csv-result dd { margin: 5px 0 0; font-size: 20px; font-weight: 600; }
+.csv-result p { margin: 14px 0 0; font-size: 12px; }
+.csv-note { border-top: 1px solid var(--line); margin-top: 24px; padding-top: 16px; }
+
+@media(max-width:760px){.csv-panel{padding:20px 16px}}

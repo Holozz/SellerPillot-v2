@@ -4,6 +4,8 @@
 
 当前 Java 范围：账号、店铺与成员权限、商品、订单/明细导入、经营查询、人工审批、执行回执和审计。当前 Java 版本不包含 Agent/RAG 和异步任务。这里不代表电商平台连接器或生产运营系统已经上线。
 
+跨店利润、后台任务和 Java Agent 的新增范围及任务清单统一见 [实施方案](../docs/实施方案.md)，本 README 描述当前可运行功能。
+
 ## 技术与边界
 
 - Java 21、Spring Boot 4.0.9、Spring Security、MyBatis 4、MySQL 8.4、Flyway、HikariCP、Redis 7.4、Micrometer；React / TypeScript / Vite 前端。
@@ -106,7 +108,7 @@ npx playwright test
 
 不设置 `JAVA_IT_MYSQL_URL` 时，Maven 会跳过真实服务测试；不能把这种运行当作完整验收。CI 配置包含 MySQL/Redis Java job，但远程 Actions 是否通过需以实际运行记录为准。
 
-性能实验另见 [实验记录](../docs/Java改造实施记录-2026-10-25.md)。百万订单由 `experiments/java-seed.py --orders 1000000 --seed 42` 生成，凭据仅写入 `.data/java-bench/`。不要对个人真实数据执行实验。造数脚本每次创建新的模拟账号/店铺，不会自动删除旧实验；重复执行会继续占用空间。
+性能实验的范围与原始报告入口见 [实施方案的现有证据索引](../docs/实施方案.md#83-现有证据索引)。百万订单由 `experiments/java-seed.py --orders 1000000 --seed 42` 生成，凭据仅写入 `.data/java-bench/`。不要对个人真实数据执行实验。造数脚本每次创建新的模拟账号/店铺，不会自动删除旧实验；重复执行会继续占用空间。
 
 负载脚本 `experiments/java-load.ps1` 只向官方 k6 镜像提供指定模拟凭据与查询文件的只读挂载，不挂载仓库或 `.env.java`。k6 容器连接 `host.docker.internal:8081`，本机 API 在这类实验期间需显式设置 `JAVA_BIND_ADDRESS=0.0.0.0`；日常本地启动默认仅监听回环地址。J0/J1 不达标退出码保留为失败，不能只看成功响应的延迟。
 
