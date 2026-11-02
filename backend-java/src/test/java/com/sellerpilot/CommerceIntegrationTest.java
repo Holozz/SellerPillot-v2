@@ -214,9 +214,16 @@ class CommerceIntegrationTest {
         Reply dataDiff=send("POST","/api/v2/margin-reports/compare",Map.of("baseline_id",report.body.get("id"),"target_id",correctedReport.body.get("id")),token);assertEquals(200,dataDiff.status,dataDiff.body.toString());assertEquals("-70.80",dataDiff.body.get("business_data_delta_cny"));assertEquals("0.00",dataDiff.body.get("fx_delta_cny"));assertFalse(((List<?>)dataDiff.body.get("changed_events")).isEmpty());
         assertEquals(result,send("POST","/api/v2/margin-reports/"+report.body.get("id")+"/recompute",null,token).body);
         send("POST","/auth/register",Map.of("username","margin-viewer","password","Password123!"),null);
+        assertEquals(200,sourceCsv(sourceSid,"procurement-batches",lot.replace(",4.00,USD",",5.00,USD"),true).status);
+        Reply revalued=send("POST","/api/v2/margin-reports/"+report.body.get("id")+"/revalue-costs",null,token);assertEquals(200,revalued.status,revalued.body.toString());assertEquals("119.50",((Map<String,Object>)revalued.body.get("result")).get("gross_margin_cny"));
+        Reply costDiff=send("POST","/api/v2/margin-reports/compare",Map.of("baseline_id",report.body.get("id"),"target_id",revalued.body.get("id")),token);assertEquals(200,costDiff.status,costDiff.body.toString());assertEquals("-13.80",costDiff.body.get("business_data_delta_cny"));assertEquals("0.00",costDiff.body.get("fx_delta_cny"));
+        assertEquals(result,send("POST","/api/v2/margin-reports/"+report.body.get("id")+"/recompute",null,token).body);
+        Reply refundRevaluation=send("POST","/api/v2/margin-reports/"+refundReport.body.get("id")+"/revalue-costs",null,token);assertEquals(200,refundRevaluation.status);assertEquals("5.70",((Map<String,Object>)refundRevaluation.body.get("result")).get("gross_margin_cny"));
+        assertEquals(2,db.queryForObject("SELECT COUNT(*) FROM sales_line_revisions",Integer.class));
         String viewer=(String)send("POST","/auth/login",Map.of("username","margin-viewer","password","Password123!"),null).body.get("access_token");
         for(long storeId:List.of(sourceSid,marketBSid))assertEquals(200,send("PUT","/api/v2/stores/"+storeId+"/members",Map.of("username","margin-viewer","role","viewer"),token).status);
         assertEquals(200,send("GET","/api/v2/margin-reports/"+report.body.get("id"),null,viewer).status);
+        assertEquals(403,send("POST","/api/v2/margin-reports/"+report.body.get("id")+"/revalue-costs",null,viewer).status);
         assertTrue(send("GET","/api/v2/margin-reports?store_id="+sourceSid,null,viewer).rows.stream().anyMatch(row->((Map<?,?>)row).get("id").equals(report.body.get("id"))));
         send("PUT","/api/v2/stores/"+marketBSid+"/members",Map.of("username","margin-viewer","role","viewer","active",false),token);
         assertEquals(404,send("GET","/api/v2/margin-reports/"+report.body.get("id"),null,viewer).status);

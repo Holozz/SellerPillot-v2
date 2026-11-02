@@ -10,6 +10,26 @@ import org.springframework.transaction.annotation.*;
 public class MarginInputs {
     private final StoreAccess access;private final FxMapper fx;private final MarginMapper reports;
     public MarginInputs(StoreAccess access,FxMapper fx,MarginMapper reports){this.access=access;this.fx=fx;this.reports=reports;}
+    @SuppressWarnings("unchecked")
+    @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ)
+    public Map<String,Object> revalueCosts(long user,Map<String,Object> original){
+        Map<String,Object> costVersions=new LinkedHashMap<>();
+        for(Object id:(List<?>)original.get("store_ids")){Map<String,Object> store=access.require(user,((Number)id).longValue(),"members",false);costVersions.put(String.valueOf(id),store.get("data_version"));}
+        List<Long> ids=new ArrayList<>();for(String type:List.of("sales","refunds"))for(Map<String,Object> row:(List<Map<String,Object>>)original.get(type))ids.add(((Number)row.get("procurement_batch_id")).longValue());
+        Map<Long,Map<String,Object>> costs=new HashMap<>();if(!ids.isEmpty())for(Map<String,Object> cost:reports.currentCosts(ids.stream().distinct().toList()))costs.put(Rows.number(cost,"original_id"),cost);
+        Map<String,Object> result=new LinkedHashMap<>(original);
+        for(String type:List.of("sales","refunds")){
+            List<Map<String,Object>> rows=new ArrayList<>();
+            for(Map<String,Object> row:(List<Map<String,Object>>)original.get(type)){
+                long prior=Rows.number(row,"procurement_batch_id");Map<String,Object> cost=costs.get(prior);
+                if(cost==null)throw new ApiException(409,"采购批次修订不存在");
+                if(!Objects.equals(cost.get("original_sku"),cost.get("source_sku"))||!Objects.equals(cost.get("original_currency"),cost.get("currency")))throw new ApiException(409,"采购批次SKU或币种已改变，须核对来源关联后处理");
+                Map<String,Object> next=new LinkedHashMap<>(row);next.putIfAbsent("original_procurement_batch_id",prior);next.put("procurement_batch_id",cost.get("id"));next.put("cost_batch_revision",cost.get("batch_revision"));next.put("cost_source_row_id",cost.get("source_row_id"));next.put("unit_purchase_cost",String.valueOf(cost.get("unit_purchase_cost")));next.put("cost_currency",cost.get("currency"));next.put("received_at",Rows.json(cost).get("received_at"));rows.add(next);
+            }
+            result.put(type,rows);
+        }
+        result.put("cost_basis","LATEST_BATCH_REVISIONS_AT_REVALUATION");result.put("cost_store_versions",costVersions);return result;
+    }
     @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ)
     public Map<String,Object> capture(long user,MarginController.Query query){
         List<Long> ids=query.store_ids().stream().distinct().sorted().toList();long owner=0;

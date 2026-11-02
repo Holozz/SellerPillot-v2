@@ -40,6 +40,13 @@ public class MarginController {
     @PostMapping("/{id}/recompute") public Map<String,Object> recompute(@AuthenticationPrincipal Long user,@PathVariable String id){
         Map<String,Object> row=require(user,id);return calculator.compute(json.readValue(String.valueOf(row.get("input_manifest")),Map.class));
     }
+    @PostMapping("/{id}/revalue-costs") public Map<String,Object> revalueCosts(@AuthenticationPrincipal Long user,@PathVariable String id){
+        Map<String,Object> row=require(user,id);Map<String,Object> manifest=inputs.revalueCosts(user,json.readValue(String.valueOf(row.get("input_manifest")),Map.class));manifest.put("revalued_from",id);
+        Map<String,Object> result=calculator.compute(manifest);String next=UUID.randomUUID().toString().replace("-","");
+        for(Object store:(List<?>)manifest.get("store_ids"))access.require(user,((Number)store).longValue(),"members",false);
+        reports.save(next,((Number)manifest.get("owner_id")).longValue(),json.writeValueAsString(manifest.get("store_ids")),json.writeValueAsString(manifest),json.writeValueAsString(result),user);
+        return Map.of("id",next,"result",result);
+    }
     private Map<String,Object> require(long user,String id){
         Map<String,Object> row=reports.get(id);if(row==null)throw new ApiException(404,"报表不存在");
         List<?> stores=json.readValue(String.valueOf(row.get("store_ids")),List.class);for(Object store:stores)access.require(user,((Number)store).longValue(),"read",false);return row;
