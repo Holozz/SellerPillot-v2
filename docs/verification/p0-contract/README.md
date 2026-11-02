@@ -27,5 +27,6 @@
 - `POST /api/v2/stores/{sid}/fx-rate-sets`：JSON 提交 `source`、`source_revision`、`rates`；每条 rate 包含 `base_currency`、`effective_date`、`rate`，报价币固定 CNY，方向为 1 单位原币兑换的人民币。保存后不覆盖旧版本；当前为手工导入接口，尚无 CSV 汇率上传或在线抓取。
 - `POST /api/v2/margin-reports`：JSON 提交 `store_ids`、`fx_rate_set_id`、`start`、`end`。日期按 UTC 左闭右开，店铺须同 owner、全部可读；当前上限 20 店、366 天、10000 条销售/退款事件。
 - `GET /api/v2/margin-reports/{id}`：读取保存的输入清单和结果；`POST /api/v2/margin-reports/{id}/recompute` 用原输入复算，不覆盖旧报表。两个接口均重新检查所有目标店铺权限。
+- `GET /api/v2/margin-reports?store_id={sid}`：列出包含该店铺且调用者仍有全部目标店铺权限的最近 50 份报表。工作台“人民币销售毛利”已接入汇率导入、生成、历史查看和复算。
 
 当前按业务日期精确匹配汇率，不擅自向前取最近日期。缺失时 `complete=false`，`gross_margin_cny=null`；`known_margin_cny` 仅为完整定价事件的小计，未折算事件保留原币金额与日期。完整度分母只含本系统已发布的销售/退款事件，不代表外部店铺所有记录均已导入。

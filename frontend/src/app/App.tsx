@@ -58,7 +58,7 @@ export default function App() {
       {loading && <p className="hint" role="status">正在加载账号与店铺…</p>}
       {user && <StoreManager stores={stores} selectedId={selectedId} onSelect={setSelectedId}
         onCreated={handleStoreCreated} onSessionExpired={handleSessionExpired} />}
-      {selectedStore && user && <JavaWorkspace key={`${user.id}:${selectedStore.id}`} store={selectedStore} onSessionExpired={handleSessionExpired} />}
+      {selectedStore && user && <JavaWorkspace key={`${user.id}:${selectedStore.id}`} store={selectedStore} stores={stores} onSessionExpired={handleSessionExpired} />}
     </section>}</main>
     <footer>SellerPilot<span>数据先核对，修改需确认。</span></footer>
   </div>
