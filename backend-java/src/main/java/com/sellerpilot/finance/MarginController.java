@@ -14,9 +14,14 @@ import tools.jackson.databind.json.JsonMapper;
 @RestController
 @RequestMapping("/api/v2/margin-reports")
 public class MarginController {
-    public record Query(@NotEmpty @Size(max=20)List<@NotNull @Positive Long> store_ids,@Positive long fx_rate_set_id,@NotNull LocalDate start,@NotNull LocalDate end){}
-    private final MarginInputs inputs;private final MarginCalculator calculator;private final MarginMapper reports;private final StoreAccess access;private final JsonMapper json;
-    public MarginController(MarginInputs inputs,MarginCalculator calculator,MarginMapper reports,StoreAccess access,JsonMapper json){this.inputs=inputs;this.calculator=calculator;this.reports=reports;this.access=access;this.json=json;}
+    public record Query(@NotEmpty @Size(max=20)List<@NotNull @Positive Long> store_ids,@Positive long fx_rate_set_id,@NotNull LocalDate start,@NotNull LocalDate end,LocalDate fixed_rate_date){}
+    public record Compare(@NotBlank String baseline_id,@NotBlank String target_id){}
+    private final MarginInputs inputs;private final MarginCalculator calculator;private final MarginMapper reports;private final StoreAccess access;private final JsonMapper json;private final MarginComparison comparison;
+    public MarginController(MarginInputs inputs,MarginCalculator calculator,MarginMapper reports,StoreAccess access,JsonMapper json,MarginComparison comparison){this.inputs=inputs;this.calculator=calculator;this.reports=reports;this.access=access;this.json=json;this.comparison=comparison;}
+    @PostMapping("/compare") public Map<String,Object> compare(@AuthenticationPrincipal Long user,@Valid @RequestBody Compare body){
+        Map<String,Object> a=require(user,body.baseline_id),b=require(user,body.target_id);
+        return comparison.compare(json.readValue(String.valueOf(a.get("input_manifest")),Map.class),json.readValue(String.valueOf(b.get("input_manifest")),Map.class));
+    }
     @GetMapping public List<Map<String,Object>> history(@AuthenticationPrincipal Long user,@RequestParam long store_id){
         access.require(user,store_id,"read",false);
         return reports.history(user,store_id).stream().map(row->{Map<String,Object> result=Rows.json(row);result.put("store_ids",json.readValue(String.valueOf(row.get("store_ids")),List.class));result.put("complete",Boolean.parseBoolean(String.valueOf(row.get("complete"))));return result;}).toList();

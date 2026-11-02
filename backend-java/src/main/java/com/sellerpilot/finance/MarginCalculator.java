@@ -16,10 +16,13 @@ public class MarginCalculator {
         for(String kind:List.of("sales","refunds"))for(Map<String,Object> row:(List<Map<String,Object>>)input.get(kind)){
             boolean sale=kind.equals("sales"),restocked=Boolean.TRUE.equals(row.get("restocked"));
             String date=String.valueOf(row.get(sale?"paid_at":"confirmed_at")).substring(0,10),costDate=String.valueOf(row.get("received_at")).substring(0,10);
+            String businessDate=date,purchaseDate=costDate;
+            if("FIXED_DATE".equals(input.get("fx_policy"))){date=String.valueOf(input.get("fixed_rate_date"));costDate=date;}
             BigDecimal amount=sale?n(row.get("quantity")).multiply(n(row.get("unit_price"))).subtract(n(row.get("discount_amount"))):n(row.get("refund_amount"));
             BigDecimal purchase=n(row.get("unit_purchase_cost")).multiply(sale?n(row.get("quantity")):restocked?n(row.get("returned_quantity")):BigDecimal.ZERO);
             BigDecimal rate=rate(rates,String.valueOf(row.get("currency")),date),costRate=purchase.signum()==0?BigDecimal.ONE:rate(rates,String.valueOf(row.get("cost_currency")),costDate);
             Map<String,Object> detail=new LinkedHashMap<>(row);detail.put("event",kind);detail.put("original_amount",amount.toPlainString());detail.put("original_purchase_cost",purchase.toPlainString());detail.put("revenue_rate_date",date);detail.put("cost_rate_date",costDate);detail.put("revenue_rate",rate==null?null:rate.toPlainString());detail.put("cost_rate",costRate==null?null:costRate.toPlainString());
+            detail.put("business_date",businessDate);detail.put("purchase_date",purchaseDate);
             boolean priced=rate!=null&&costRate!=null;detail.put("complete",priced);
             if(!priced){missing.add(detail);details.add(detail);continue;}
             BigDecimal converted=amount.multiply(rate),convertedCost=purchase.multiply(costRate),margin=sale?converted.subtract(convertedCost):convertedCost.subtract(converted);

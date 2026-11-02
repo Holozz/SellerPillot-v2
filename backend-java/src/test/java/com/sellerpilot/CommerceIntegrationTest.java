@@ -185,6 +185,7 @@ class CommerceIntegrationTest {
         List<Map<String,Object>> rates=List.of(
             Map.of("base_currency","USD","effective_date","2026-10-31","rate","6.90"),
             Map.of("base_currency","USD","effective_date","2026-11-01","rate","7.00"),
+            Map.of("base_currency","USD","effective_date","2026-11-02","rate","7.10"),
             Map.of("base_currency","USD","effective_date","2026-11-03","rate","7.20"),
             Map.of("base_currency","EUR","effective_date","2026-10-30","rate","7.80"),
             Map.of("base_currency","EUR","effective_date","2026-11-02","rate","8.00"));
@@ -193,15 +194,24 @@ class CommerceIntegrationTest {
         Map<String,Object> result=(Map<String,Object>)report.body.get("result");assertEquals("133.30",result.get("gross_margin_cny"));assertEquals("286.00",result.get("sales_net_cny"));assertEquals("152.70",result.get("procurement_cost_cny"));assertEquals(true,result.get("complete"));
         Files.writeString(Path.of("../docs/verification/p0-contract/actual-margin.json"),json.writeValueAsString(Map.of("environment",db.queryForObject("SELECT VERSION()",String.class),"expected",Map.of("sales_net_cny","286.00","procurement_cost_cny","152.70","gross_margin_cny","133.30"),"actual",result)));
         assertEquals(result,send("POST","/api/v2/margin-reports/"+report.body.get("id")+"/recompute",null,token).body);
+        Reply fixed=send("POST","/api/v2/margin-reports",Map.of("store_ids",List.of(sourceSid,marketBSid),"fx_rate_set_id",rateSet.body.get("id"),"start","2026-11-01","end","2026-11-03","fixed_rate_date","2026-11-02"),token);
+        assertEquals(200,fixed.status,fixed.body.toString());assertEquals("131.00",((Map<String,Object>)fixed.body.get("result")).get("gross_margin_cny"));
+        List<Map<String,Object>> changedRates=rates.stream().map(rate->{Map<String,Object> copy=new HashMap<>(rate);if(rate.get("base_currency").equals("USD")&&rate.get("effective_date").equals("2026-11-01"))copy.put("rate","8.00");return copy;}).toList();
+        Reply changedSet=send("POST","/api/v2/stores/"+sourceSid+"/fx-rate-sets",Map.of("source","fixture","source_revision","fx-change","rates",changedRates),token);
+        Reply fxReport=send("POST","/api/v2/margin-reports",Map.of("store_ids",List.of(sourceSid,marketBSid),"fx_rate_set_id",changedSet.body.get("id"),"start","2026-11-01","end","2026-11-03"),token);
+        Reply fxDiff=send("POST","/api/v2/margin-reports/compare",Map.of("baseline_id",report.body.get("id"),"target_id",fxReport.body.get("id")),token);assertEquals(200,fxDiff.status,fxDiff.body.toString());assertEquals("0.00",fxDiff.body.get("business_data_delta_cny"));assertEquals("18.00",fxDiff.body.get("fx_delta_cny"));
+        assertEquals(422,send("POST","/api/v2/margin-reports/compare",Map.of("baseline_id",report.body.get("id"),"target_id",fixed.body.get("id")),token).status);
         Reply refundReport=send("POST","/api/v2/margin-reports",Map.of("store_ids",List.of(sourceSid),"fx_rate_set_id",rateSet.body.get("id"),"start","2026-11-03","end","2026-11-04"),token);assertEquals(200,refundReport.status,refundReport.body.toString());
         assertEquals("-1.20",((Map<String,Object>)refundReport.body.get("result")).get("gross_margin_cny"));
         Reply partialSet=send("POST","/api/v2/stores/"+sourceSid+"/fx-rate-sets",Map.of("source","fixture","source_revision","partial","rates",List.of(rates.get(1))),token);
         Reply partial=send("POST","/api/v2/margin-reports",Map.of("store_ids",List.of(sourceSid,marketBSid),"fx_rate_set_id",partialSet.body.get("id"),"start","2026-11-01","end","2026-11-03"),token);assertEquals(200,partial.status);
         assertEquals(false,((Map<String,Object>)partial.body.get("result")).get("complete"));assertNull(((Map<String,Object>)partial.body.get("result")).get("gross_margin_cny"));
+        assertEquals(422,send("POST","/api/v2/margin-reports/compare",Map.of("baseline_id",report.body.get("id"),"target_id",partial.body.get("id")),token).status);
         assertEquals(result,((Map<String,Object>)send("GET","/api/v2/margin-reports/"+report.body.get("id"),null,token).body.get("result")));
         assertEquals(200,sourceCsv(sourceSid,"orders",file.replace(",paid,USD",",cancelled,USD"),true).status);
         Reply correctedReport=send("POST","/api/v2/margin-reports",Map.of("store_ids",List.of(sourceSid,marketBSid),"fx_rate_set_id",rateSet.body.get("id"),"start","2026-11-01","end","2026-11-03"),token);
         assertEquals(200,correctedReport.status,correctedReport.body.toString());assertEquals("62.50",((Map<String,Object>)correctedReport.body.get("result")).get("gross_margin_cny"));
+        Reply dataDiff=send("POST","/api/v2/margin-reports/compare",Map.of("baseline_id",report.body.get("id"),"target_id",correctedReport.body.get("id")),token);assertEquals(200,dataDiff.status,dataDiff.body.toString());assertEquals("-70.80",dataDiff.body.get("business_data_delta_cny"));assertEquals("0.00",dataDiff.body.get("fx_delta_cny"));assertFalse(((List<?>)dataDiff.body.get("changed_events")).isEmpty());
         assertEquals(result,send("POST","/api/v2/margin-reports/"+report.body.get("id")+"/recompute",null,token).body);
         send("POST","/auth/register",Map.of("username","margin-viewer","password","Password123!"),null);
         String viewer=(String)send("POST","/auth/login",Map.of("username","margin-viewer","password","Password123!"),null).body.get("access_token");
@@ -211,6 +221,7 @@ class CommerceIntegrationTest {
         send("PUT","/api/v2/stores/"+marketBSid+"/members",Map.of("username","margin-viewer","role","viewer","active",false),token);
         assertEquals(404,send("GET","/api/v2/margin-reports/"+report.body.get("id"),null,viewer).status);
         assertEquals(404,send("POST","/api/v2/margin-reports/"+report.body.get("id")+"/recompute",null,viewer).status);
+        assertEquals(404,send("POST","/api/v2/margin-reports/compare",Map.of("baseline_id",report.body.get("id"),"target_id",correctedReport.body.get("id")),viewer).status);
         assertFalse(send("GET","/api/v2/margin-reports?store_id="+sourceSid,null,viewer).rows.stream().anyMatch(row->((Map<?,?>)row).get("id").equals(report.body.get("id"))));
     }
     @Test void sourceCorrectionsRequireConfirmationAndFailedLineBatchRollsBackAtomically()throws Exception{
