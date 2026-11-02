@@ -7,7 +7,7 @@ interface FxRate { base_currency: string; effective_date: string; rate: string }
 interface History { id: string; start_date: string; end_date: string; complete: boolean; known_margin_cny: string; created_at: string }
 interface Detail { store_id: number; external_line_id: string; event: string; original_amount: string; currency: string; original_purchase_cost: string; cost_currency: string; revenue_rate_date: string; revenue_rate: string | null; cost_rate_date: string; cost_rate: string | null; margin_cny_unrounded?: string; complete: boolean; source_row_id: number; procurement_batch_id: number }
 interface Result { complete: boolean; event_count: number; priced_event_count: number; sales_net_cny: string; refunds_cny: string; procurement_cost_cny: string; returned_cost_cny: string; known_margin_cny: string; gross_margin_cny: string | null; details: Detail[]; products: { internal_sku: string; known_margin_cny: string }[] }
-interface Report { id: string; result: Result; input_manifest?: { start: string; end: string; store_ids: number[]; fx_rate_set: FxSet; rule_version: string; fx_policy?: string; fixed_rate_date?: string } }
+interface Report { id: string; result: Result; input_manifest?: { start: string; end: string; store_ids: number[]; fx_rate_set: FxSet; rule_version: string; fx_policy?: string; fixed_rate_date?: string; revalued_from?: string } }
 interface Comparison { before_margin_cny: string; after_margin_cny: string; margin_delta_cny: string; business_data_delta_cny: string; fx_delta_cny: string; component_deltas: Record<string, string>; changed_events: { event_key: string; margin_delta_cny: string; before: Detail | null; after: Detail | null }[] }
 
 export default function MarginReports({ store, stores, onSessionExpired }: { store: Store; stores: Store[]; onSessionExpired: () => void }) {
@@ -86,6 +86,7 @@ export default function MarginReports({ store, stores, onSessionExpired }: { sto
     </section>}
     {report && <section><h3>报表 {report.id}</h3>
       {report.input_manifest && <p>期间：{report.input_manifest.start} 至 {report.input_manifest.end}（不含）· 店铺：{report.input_manifest.store_ids.join('、')} · 汇率：{report.input_manifest.fx_rate_set.source} / {report.input_manifest.fx_rate_set.source_revision} · {report.input_manifest.fixed_rate_date ? `固定日期 ${report.input_manifest.fixed_rate_date}` : '各业务日期汇率'}</p>}
+      {report.input_manifest?.revalued_from && <p>采购成本重估来源报表：{report.input_manifest.revalued_from}。销售、退款和汇率沿用来源报表快照。</p>}
       <p role="status">{report.result.complete ? `销售毛利：${report.result.gross_margin_cny} 元` : `汇率不完整，已定价毛利小计：${report.result.known_margin_cny} 元；完整销售毛利暂不可用。`}</p>
       <p>已定价事件 {report.result.priced_event_count} / {report.result.event_count}。覆盖范围仅指本系统已发布的销售和退款记录。</p>
       <div className="java-table-scroll"><table><thead><tr><th>销售净额（扣折扣）</th><th>退款</th><th>已售采购成本</th><th>退货成本转回</th></tr></thead><tbody><tr><td>{report.result.sales_net_cny}</td><td>{report.result.refunds_cny}</td><td>{report.result.procurement_cost_cny}</td><td>{report.result.returned_cost_cny}</td></tr></tbody></table></div>
@@ -94,6 +95,16 @@ export default function MarginReports({ store, stores, onSessionExpired }: { sto
         const value = await request<Result>(`/v2/margin-reports/${report.id}/recompute`, { method: 'POST', signal })
         if (!signal.aborted) { setReport({ ...report, result: value }); setNotice('已使用原报表输入重新计算，保存的报表未被覆盖。') }
       })}>用原输入复算</button>
+      <button className="quiet-button" disabled={busy} onClick={() => {
+        if (!window.confirm('确认按当前采购批次修订生成成本重估报表？销售、退款和汇率沿用此报表快照；旧报表及销售记录保持不变。仅店铺所有者可执行。')) return
+        void run(async signal => {
+          const oldId = report.id
+          const created = await request<Report>(`/v2/margin-reports/${oldId}/revalue-costs`, { method: 'POST', signal })
+          if (signal.aborted) return
+          setReport(created); setBaseline(oldId); setTarget(created.id); setComparison(null); await refresh(signal); await open(created.id, signal)
+          if (!signal.aborted) setNotice('采购成本重估报表已保存，可点击“计算报表差额”核对成本影响。')
+        })
+      }}>按最新采购成本生成新报表</button>
       <h4>统一商品毛利排序（展示前 50 项）</h4><div className="java-table-scroll"><table><thead><tr><th>统一 SKU</th><th>已定价毛利（元）</th></tr></thead><tbody>{report.result.products.slice(0, 50).map(product => <tr key={product.internal_sku}><td>{product.internal_sku}</td><td>{product.known_margin_cny}</td></tr>)}</tbody></table></div>
       <h4>折算明细（第 {detailPage + 1} 页）</h4><div className="java-table-scroll"><table><thead><tr><th>店铺 / 来源行</th><th>业务明细</th><th>事件</th><th>原币收入/退款</th><th>原币采购成本</th><th>收入/退款汇率日期及汇率</th><th>采购汇率日期及汇率</th><th>状态 / 毛利影响（未舍入）</th></tr></thead><tbody>{report.result.details.slice(detailPage * 50, (detailPage + 1) * 50).map((detail, index) => <tr key={index}><td>{detail.store_id} / #{detail.source_row_id}</td><td>{detail.external_line_id}</td><td>{detail.event === 'sales' ? '销售' : '退款/退货'}</td><td>{detail.original_amount} {detail.currency}</td><td>{detail.original_purchase_cost} {detail.cost_currency}</td><td>{detail.revenue_rate_date} / {detail.revenue_rate ?? '缺失'}</td><td>{detail.cost_rate_date} / {detail.cost_rate ?? '缺失'}</td><td>{detail.complete ? detail.margin_cny_unrounded : '未定价'}</td></tr>)}</tbody></table></div>
       <button className="quiet-button" disabled={detailPage === 0} onClick={() => setDetailPage(value => value - 1)}>上一页明细</button><button className="quiet-button" disabled={(detailPage + 1) * 50 >= report.result.details.length} onClick={() => setDetailPage(value => value + 1)}>下一页明细</button>
