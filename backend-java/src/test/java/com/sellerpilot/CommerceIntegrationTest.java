@@ -53,6 +53,15 @@ class CommerceIntegrationTest {
         for(int line:List.of(1,2))db.update("INSERT INTO order_items(store_id,order_id,product_id,line_no,quantity,unit_price,refund_amount) VALUES(?,?,?,?,2,10,1)",sid,oid,pid,line);
     }
     Map<String,Object> query(String metric){return Map.of("metric",metric,"group_by","currency","start","2026-10-01T00:00:00Z","end","2026-10-03T00:00:00Z");}
+    @Test void exchangeRateSetsPreserveVersionsAndRejectDuplicateDates()throws Exception{
+        Map<String,Object> rate=Map.of("base_currency","USD","effective_date","2026-11-01","rate","7.00");
+        Map<String,Object> body=Map.of("source","manual-provider","source_revision","v1","rates",List.of(rate));
+        Reply created=send("POST","/api/v2/stores/"+sid+"/fx-rate-sets",body,token);assertEquals(200,created.status,created.body.toString());
+        assertEquals(200,send("GET","/api/v2/stores/"+sid+"/fx-rate-sets/"+created.body.get("id"),null,token).status);
+        assertEquals(409,send("POST","/api/v2/stores/"+sid+"/fx-rate-sets",body,token).status);
+        assertEquals(422,send("POST","/api/v2/stores/"+sid+"/fx-rate-sets",Map.of("source","manual-provider","source_revision","v2","rates",List.of(rate,rate)),token).status);
+        assertEquals(1,db.queryForObject("SELECT COUNT(*) FROM fx_rate_sets",Integer.class));
+    }
     @Test void queryMatchesHandCalculationAndDoesNotCountJoinDuplicates()throws Exception{
         Reply sales=send("POST","/api/v2/stores/"+sid+"/metrics/query",query("sales"),token);
         assertEquals(200,sales.status,sales.body.toString());
