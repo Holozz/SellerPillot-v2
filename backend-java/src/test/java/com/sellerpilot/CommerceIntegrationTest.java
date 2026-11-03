@@ -166,9 +166,17 @@ class CommerceIntegrationTest {
         assertEquals(409,sourceCsv(store,"refunds",excess).status);
         Reply returned=generateMargin(Map.of("store_ids",List.of(store),"fx_rate_set_id",fx,"start","2026-11-02","end","2026-11-03"));assertEquals("-4.00",((Map<String,Object>)returned.body.get("result")).get("gross_margin_cny"));
         assertEquals(200,sourceCsv(store,"procurement-batches",batchHeader+batchB.replace(",6.00,CNY",",7.00,CNY"),true).status);
-        Reply revised;
         StringBuilder imported = new StringBuilder("external_order_id,ordered_at,status,currency\n");
-        for (int i=0; i<500; i++) imported.append("mixed-").append(i).append(",2026-10-02T00:00:00Z,paid,USD\n");
+        for (int i=0; i<500; i++) imported.append("mixed-").append(i).append(",2026-11-01T00:00:00Z,paid,USD\n");
+        String metricsPath = "/api/v2/stores/"+sid+"/metrics/query";
+        assertEquals(200,send("POST",metricsPath,query("sales"),token).status);
+        observeMarginLoad(report, imported.toString(), metricsPath, false);
+        Reply revised = observeMarginLoad(report, imported.toString(), metricsPath, true);
+        assertEquals(200,revised.status,revised.body.toString());assertEquals("12.00",((Map<String,Object>)revised.body.get("result")).get("gross_margin_cny"));
+        assertEquals(result,send("POST","/api/v2/margin-reports/"+report.body.get("id")+"/recompute",null,token).body);
+    }
+    Reply observeMarginLoad(Reply report, String imported, String metricsPath, boolean mixed) throws Exception {
+        Reply revised;
         var start = new CountDownLatch(1);
         var latencies = new ConcurrentLinkedQueue<Long>();
         var rejected = new java.util.concurrent.atomic.AtomicInteger();
@@ -178,7 +186,7 @@ class CommerceIntegrationTest {
                 start.await();
                 for (int j=0; j<20; j++) {
                     long before = System.nanoTime();
-                    var response = send("POST","/api/v2/stores/"+sid+"/metrics/query",query("sales"),token);
+                    var response = send("POST",metricsPath,query("sales"),token);
                     if (response.status == 503 && "经营查询繁忙，请稍后重试".equals(response.body.get("detail"))) {
                         rejected.incrementAndGet();
                     } else {
@@ -188,26 +196,25 @@ class CommerceIntegrationTest {
                 }
                 return null;
             }));
-            var importer = pool.submit(() -> { start.await(); return csv("orders",imported.toString()); });
-            var revaluation = pool.submit(() -> {
+            var importer = mixed ? pool.submit(() -> { start.await(); return csv("orders",imported); }) : null;
+            var revaluation = mixed ? pool.submit(() -> {
                 start.await();
                 long before = System.nanoTime();
                 Reply saved = revalue(report);
                 System.out.println("mixed_smoke revalue_ms="+TimeUnit.NANOSECONDS.toMillis(System.nanoTime()-before));
                 return saved;
-            });
+            }) : null;
             start.countDown();
-            assertEquals(200,importer.get(15,TimeUnit.SECONDS).status);
-            revised = revaluation.get(15,TimeUnit.SECONDS);
+            if (mixed) assertEquals(200,importer.get(15,TimeUnit.SECONDS).status);
+            revised = mixed ? revaluation.get(15,TimeUnit.SECONDS) : null;
             for (var reader : readers) reader.get(15,TimeUnit.SECONDS);
         }
         var sorted = latencies.stream().sorted().toList();
         assertFalse(sorted.isEmpty());
         assertEquals(80,sorted.size()+rejected.get());
-        System.out.println("mixed_smoke query_count=80 rejected="+rejected.get()
-            +" successful_query_p95_ms="+sorted.get((int)Math.ceil(sorted.size()*0.95)-1)+" imported_orders=500");
-        assertEquals(200,revised.status,revised.body.toString());assertEquals("12.00",((Map<String,Object>)revised.body.get("result")).get("gross_margin_cny"));
-        assertEquals(result,send("POST","/api/v2/margin-reports/"+report.body.get("id")+"/recompute",null,token).body);
+        System.out.println("margin_load mode="+(mixed?"mixed":"baseline")+" query_count=80 rejected="+rejected.get()
+            +" successful_query_p95_ms="+sorted.get((int)Math.ceil(sorted.size()*0.95)-1)+" imported_orders="+(mixed?500:0));
+        return revised;
     }
     @Test void queryMatchesHandCalculationAndDoesNotCountJoinDuplicates()throws Exception{
         Reply sales=send("POST","/api/v2/stores/"+sid+"/metrics/query",query("sales"),token);
