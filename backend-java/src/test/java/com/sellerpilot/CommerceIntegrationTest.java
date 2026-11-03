@@ -29,6 +29,7 @@ class CommerceIntegrationTest {
     @Value("${local.server.port}")int port;
     @Autowired JdbcTemplate db;
     @Autowired JsonMapper json;
+    @Autowired io.micrometer.core.instrument.MeterRegistry meters;
     final HttpClient http=HttpClient.newHttpClient();
     String token;long sid;
     record Reply(int status,Map<String,Object> body,List<?> rows){}
@@ -138,6 +139,86 @@ class CommerceIntegrationTest {
         assertEquals(1,db.queryForObject("SELECT COUNT(*) FROM fx_rate_sets",Integer.class));
     }
     String cell(Object value){return "\""+json.writeValueAsString(value).replace("\"","\"\"")+"\"";}
+    @Test
+    @EnabledIfEnvironmentVariable(named="JAVA_MARGIN_LOAD",matches="true")
+    void savedMarginReportLoadAtFixedArrivalRate() throws Exception {
+        for (int size : List.of(100,9500)) {
+            String key = "load-"+size;
+            var created = send("POST","/stores",Map.of("name",key,"platform","market-a","source_store_key",key),token);
+            assertEquals(201,created.status,created.body.toString());
+            long store = ((Number)created.body.get("id")).longValue();
+            String base = "/api/v2/stores/"+store;
+            assertEquals(201,send("POST",base+"/catalog-products",Map.of("internal_sku",key,"title",key,"base_unit","piece"),token).status);
+            assertEquals(200,send("PUT",base+"/product-mappings/SKU",Map.of("internal_sku",key),token).status);
+            assertEquals(200,sourceCsv(store,"orders","platform_code,store_key,external_order_id,ordered_at,paid_at,status,currency\n"
+                +"market-a,"+key+",O,2026-11-01T00:00:00Z,2026-11-01T00:00:00Z,paid,CNY\n").status);
+            String batch = "platform_code,store_key,source_batch_id,external_sku,received_at,quantity,unit_purchase_cost,currency\n"
+                +"market-a,"+key+",LOT,SKU,2026-10-31T00:00:00Z,"+size+",%s,CNY\n";
+            assertEquals(200,sourceCsv(store,"procurement-batches",batch.formatted("4.00")).status);
+            StringBuilder lines = new StringBuilder("platform_code,store_key,external_line_id,external_order_id,external_sku,quantity,unit_price,discount_amount,currency,source_batch_id\n");
+            for (int i=0; i<size; i++) lines.append("market-a,").append(key).append(",L").append(i).append(",O,SKU,1,10.00,0.00,CNY,LOT\n");
+            var uploaded = sourceCsv(store,"order-items",lines.toString());
+            assertEquals(200,uploaded.status,uploaded.body.toString());
+            var fx = send("POST",base+"/fx-rate-sets",Map.of("source","fixture","source_revision",key,"rates",
+                List.of(Map.of("base_currency","USD","effective_date","2026-11-01","rate","7.00"))),token);
+            assertEquals(200,fx.status,fx.body.toString());
+            var report = generateMargin(Map.of("store_ids",List.of(store),"fx_rate_set_id",fx.body.get("id"),
+                "start","2026-11-01","end","2026-11-02"));
+            for (String mode : List.of("read","import","revalue","mixed")) {
+                if (mode.equals("revalue") || mode.equals("mixed")) {
+                    assertEquals(200,sourceCsv(store,"procurement-batches",batch.formatted(mode.equals("mixed")?"6.00":"5.00"),true).status);
+                }
+                measureSavedReport(report,size,mode);
+            }
+        }
+    }
+
+    private void measureSavedReport(Reply report, int size, String mode) throws Exception {
+        String path = "/api/v2/margin-reports/"+report.body.get("id");
+        var request = HttpRequest.newBuilder(URI.create("http://127.0.0.1:"+port+path))
+            .header("Authorization","Bearer "+token).timeout(java.time.Duration.ofSeconds(15)).GET().build();
+        var warm = http.send(request,HttpResponse.BodyHandlers.ofByteArray());
+        assertEquals(200,warm.statusCode());
+        var acquire = meters.get("hikaricp.connections.acquire").timer();
+        long count = acquire.count();
+        double time = acquire.totalTime(TimeUnit.MILLISECONDS);
+        StringBuilder orders = new StringBuilder("external_order_id,ordered_at,status,currency\n");
+        for (int i=0; i<500; i++) orders.append("load-").append(size).append('-').append(mode).append('-').append(i)
+            .append(",2026-11-01T00:00:00Z,paid,USD\n");
+        try (var readers = Executors.newFixedThreadPool(4); var background = Executors.newFixedThreadPool(2)) {
+            long start = System.nanoTime()+TimeUnit.MILLISECONDS.toNanos(100);
+            var importRun = Set.of("import","mixed").contains(mode) ? background.submit(() -> {
+                TimeUnit.NANOSECONDS.sleep(Math.max(0,start-System.nanoTime()));
+                assertEquals(200,csv("orders",orders.toString()).status);
+                return TimeUnit.NANOSECONDS.toMillis(System.nanoTime()-start);
+            }) : null;
+            var revalueRun = Set.of("revalue","mixed").contains(mode) ? background.submit(() -> {
+                TimeUnit.NANOSECONDS.sleep(Math.max(0,start-System.nanoTime()));
+                assertEquals(200,revalue(report).status);
+                return TimeUnit.NANOSECONDS.toMillis(System.nanoTime()-start);
+            }) : null;
+            List<Future<Long>> reads = new ArrayList<>();
+            for (int i=0; i<15; i++) {
+                long due = start+TimeUnit.MILLISECONDS.toNanos(i*200L);
+                TimeUnit.NANOSECONDS.sleep(Math.max(0,due-System.nanoTime()));
+                reads.add(readers.submit(() -> {
+                    var response = http.send(request,HttpResponse.BodyHandlers.ofByteArray());
+                    assertEquals(200,response.statusCode());
+                    assertTrue(Arrays.equals(warm.body(),response.body()),"旧报表内容发生变化");
+                    return TimeUnit.NANOSECONDS.toMillis(System.nanoTime()-due);
+                }));
+            }
+            List<Long> times = new ArrayList<>();
+            for (var read : reads) times.add(read.get(20,TimeUnit.SECONDS));
+            Collections.sort(times);
+            var imported = importRun == null ? null : importRun.get(20,TimeUnit.SECONDS);
+            var revalued = revalueRun == null ? null : revalueRun.get(20,TimeUnit.SECONDS);
+            double meanAcquire = (acquire.totalTime(TimeUnit.MILLISECONDS)-time)/Math.max(1,acquire.count()-count);
+            System.out.printf(Locale.ROOT,"saved_margin size=%d mode=%s ok=%d p95_ms=%d bytes=%d acquire_mean_ms=%.3f import_ms=%s revalue_ms=%s%n",
+                size,mode,times.size(),times.get((int)Math.ceil(times.size()*0.95)-1),warm.body().length,meanAcquire,imported,revalued);
+        }
+    }
+
     @Test void multiBatchSalesReturnsAndCostRevaluationConserveAmounts()throws Exception{
         long store=((Number)send("POST","/stores",Map.of("name","Multi","platform","market-a","source_store_key","multi"),token).body.get("id")).longValue();
         assertEquals(201,send("POST","/api/v2/stores/"+store+"/catalog-products",Map.of("internal_sku","MULTI","title","Multi","base_unit","piece"),token).status);
