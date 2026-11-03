@@ -25,7 +25,7 @@ class CommerceIntegrationTest {
         if(url==null||!url.matches("jdbc:mysql://[^/]+/sellerpilot_java_test(?:\\?.*)?"))throw new IllegalArgumentException("只允许独立 Java 测试库");
         registry.add("spring.datasource.url",()->url);
         registry.add("sellerpilot.cache.enabled",()->false);
-        if ("true".equals(System.getenv("JAVA_MARGIN_RECOVERY"))) {
+        if ("true".equals(System.getenv("JAVA_MARGIN_RECOVERY")) || "true".equals(System.getenv("JAVA_MARGIN_QUEUE_CAPACITY"))) {
             registry.add("sellerpilot.margin.worker.enabled",()->false);
         }
     }
@@ -211,6 +211,34 @@ class CommerceIntegrationTest {
         assertNotEquals(id,next);
         assertEquals("SUCCEEDED",awaitMarginJob(next).body.get("status"));
         assertEquals(404,send("GET","/api/v2/margin-reports/"+id,null,token).status);
+    }
+    @Test
+    @EnabledIfEnvironmentVariable(named="JAVA_MARGIN_QUEUE_CAPACITY",matches="true")
+    void marginJobQueueRejectsNewWorkAtCapacityButKeepsIdempotency() throws Exception {
+        var fx=send("POST","/api/v2/stores/"+sid+"/fx-rate-sets",Map.of(
+            "source","fixture","source_revision","queue-capacity","rates",
+            List.of(Map.of("base_currency","USD","effective_date","2026-01-01","rate","7.00"))),token);
+        assertEquals(200,fx.status,fx.body.toString());
+        var first=Map.of("store_ids",List.of(sid),"fx_rate_set_id",fx.body.get("id"),
+            "start","2026-01-01","end","2026-01-02");
+        String firstId=null;
+        for(int day=0;day<32;day++){
+            var query=Map.of("store_ids",List.of(sid),"fx_rate_set_id",fx.body.get("id"),
+                "start",java.time.LocalDate.of(2026,1,1).plusDays(day).toString(),
+                "end",java.time.LocalDate.of(2026,1,2).plusDays(day).toString());
+            var accepted=send("POST","/api/v2/margin-report-jobs",query,token);
+            assertEquals(202,accepted.status,accepted.body.toString());
+            if(day==0)firstId=(String)accepted.body.get("id");
+        }
+        var rejected=send("POST","/api/v2/margin-report-jobs",Map.of(
+            "store_ids",List.of(sid),"fx_rate_set_id",fx.body.get("id"),
+            "start","2026-02-02","end","2026-02-03"),token);
+        assertEquals(429,rejected.status,rejected.body.toString());
+        assertEquals("报表任务队列已满，请稍后重试",rejected.body.get("detail"));
+        var duplicate=send("POST","/api/v2/margin-report-jobs",first,token);
+        assertEquals(202,duplicate.status,duplicate.body.toString());
+        assertEquals(firstId,duplicate.body.get("id"));
+        assertEquals(32,db.queryForObject("SELECT COUNT(*) FROM margin_report_jobs WHERE status='QUEUED'",Integer.class));
     }
     Map<String,Object> query(String metric){return Map.of("metric",metric,"group_by","currency","start","2026-10-01T00:00:00Z","end","2026-10-03T00:00:00Z");}
     @Test void exchangeRateSetsPreserveVersionsAndRejectDuplicateDates()throws Exception{
