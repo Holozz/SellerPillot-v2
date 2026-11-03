@@ -2,7 +2,7 @@ import {test,expect} from '@playwright/test'
 import path from 'node:path'
 
 test('毛利报表界面：跨店选择、缺汇率提示和历史复算',async({page})=>{
-  const result={complete:false,event_count:2,priced_event_count:1,sales_net_cny:'126.00',refunds_cny:'0.00',procurement_cost_cny:'55.20',returned_cost_cny:'0.00',known_margin_cny:'70.80',gross_margin_cny:null,products:[{internal_sku:'MUG-01',known_margin_cny:'70.80'}],details:[{store_id:2,source_row_id:9,external_line_id:'B-1',event:'sales',original_amount:'20.00',currency:'EUR',original_purchase_cost:'12.50',cost_currency:'EUR',revenue_rate_date:'2026-11-02',revenue_rate:null,cost_rate_date:'2026-10-30',cost_rate:null,complete:false}]}
+  const result={complete:false,event_count:2,priced_event_count:1,sales_net_cny:'126.00',refunds_cny:'0.00',procurement_cost_cny:'55.20',returned_cost_cny:'0.00',known_margin_cny:'70.80',gross_margin_cny:null,products:[{internal_sku:'MUG-01',known_margin_cny:'70.80'}],details:[{store_id:2,source_row_id:9,external_line_id:'B-1',event:'sales',original_amount:'20.00',currency:'EUR',original_purchase_cost:'12.50',cost_currency:'EUR',revenue_rate_date:'2026-11-02',revenue_rate:null,cost_rate_date:'MULTIPLE',cost_rate:null,complete:false,cost_allocations:[{source_batch_id:'LOT-A',procurement_batch_id:1,cost_batch_revision:1,quantity:1,cost_currency:'EUR',unit_purchase_cost:'5.00',rate_date:'2026-10-30',rate:'7.80',cost_cny_unrounded:'39.00'},{source_batch_id:'LOT-B',procurement_batch_id:2,cost_batch_revision:2,quantity:1,cost_currency:'EUR',unit_purchase_cost:'7.50',rate_date:'2026-10-31',rate:null}]}]}
   const fx={id:1,source:'provider',source_revision:'v1'}
   const saved={id:'report-1',result,input_manifest:{start:'2026-11-01',end:'2026-11-03',store_ids:[1,2],fx_rate_set:fx}}
   let created=false,recomputed=0,fixedSubmitted=false,revaluations=0
@@ -36,6 +36,9 @@ test('毛利报表界面：跨店选择、缺汇率提示和历史复算',async(
   await page.getByRole('button',{name:'生成并保存毛利报表'}).click()
   await expect(page.getByText('汇率不完整，已定价毛利小计：70.80 元；完整销售毛利暂不可用。',{exact:true})).toBeVisible()
   await expect(page.getByRole('cell',{name:'未定价',exact:true})).toBeVisible()
+  await page.getByText('B-1 · 来源行 #9 · 采购批次分配（2 笔）',{exact:true}).click()
+  await expect(page.getByRole('cell',{name:'LOT-B / 2',exact:true})).toBeVisible()
+  await expect(page.getByRole('cell',{name:'2026-10-31 / 缺失',exact:true})).toBeVisible()
   await page.getByRole('button',{name:'用原输入复算'}).click()
   await expect(page.getByText('已使用原报表输入重新计算，保存的报表未被覆盖。',{exact:true})).toBeVisible()
   expect(recomputed).toBe(1)
