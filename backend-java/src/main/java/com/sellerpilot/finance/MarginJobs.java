@@ -6,6 +6,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.temporal.ChronoUnit;
+import java.time.LocalDate;
 import java.util.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -38,6 +39,21 @@ class MarginJobs {
     }
 
     Map<String,Object> submit(long user, MarginController.Query raw) {
+        return submit(user, raw, null);
+    }
+
+    Map<String,Object> revalue(long user, String source) {
+        var input = sourceManifest(source);
+        var stores = ((List<?>) input.get("store_ids")).stream().map(id -> ((Number) id).longValue()).toList();
+        var fx = (Map<?,?>) input.get("fx_rate_set");
+        var fixed = input.get("fixed_rate_date");
+        var query = new MarginController.Query(stores, ((Number) fx.get("id")).longValue(),
+            LocalDate.parse(input.get("start").toString()), LocalDate.parse(input.get("end").toString()),
+            fixed == null ? null : LocalDate.parse(fixed.toString()));
+        return submit(user, query, source);
+    }
+
+    private Map<String,Object> submit(long user, MarginController.Query raw, String source) {
         long days = ChronoUnit.DAYS.between(raw.start(), raw.end());
         if (days < 1 || days > 366) throw new ApiException(422, "区间须为1至366天，结束日期不计入");
         var query = new MarginController.Query(raw.store_ids().stream().distinct().sorted().toList(),
@@ -45,7 +61,7 @@ class MarginJobs {
         var versions = new LinkedHashMap<String,String>();
         long owner = 0;
         for (long id : query.store_ids()) {
-            var store = access.require(user, id, "read", false);
+            var store = access.require(user, id, source == null ? "read" : "members", false);
             long currentOwner = ((Number) store.get("owner_id")).longValue();
             if (owner != 0 && owner != currentOwner) throw new ApiException(422, "报表店铺须属于同一所有者");
             owner = currentOwner;
@@ -53,20 +69,26 @@ class MarginJobs {
         }
         String queryJson = json.writeValueAsString(query);
         String versionsJson = json.writeValueAsString(versions);
-        String key = digest(user + ":" + queryJson + ":" + versionsJson);
+        String key = digest(user + ":" + queryJson + ":" + versionsJson + (source == null ? "" : ":" + source));
         return tx.execute(status -> {
             jobs.lockQueue();
             var existing = jobs.byKey(key);
             if (existing != null) return view(existing);
             requireCapacity();
             String id = UUID.randomUUID().toString().replace("-", "");
-            jobs.insert(id, key, user, queryJson, versionsJson);
+            jobs.insert(id, key, user, queryJson, versionsJson, source);
             return view(jobs.get(id));
         });
     }
 
     Map<String,Object> get(long user, String id) {
         return view(require(user, id));
+    }
+
+    Map<String,Object> regenerate(long user, String id) {
+        var row = require(user, id);
+        if (!"STALE".equals(row.get("status"))) throw new ApiException(409, "仅数据版本变化的任务可重新生成");
+        return submit(user, query(row), (String) row.get("source_report_id"));
     }
 
     Map<String,Object> retry(long user, String id) {
@@ -95,20 +117,30 @@ class MarginJobs {
         String id = (String) job.get("id");
         long user = ((Number) job.get("requested_by")).longValue();
         var query = query(job);
+        String source = (String) job.get("source_report_id");
         try {
-            var manifest = inputs.capture(user, query);
+            var manifest = source == null ? inputs.capture(user, query) : inputs.revalueCosts(user, sourceManifest(source));
+            if (source != null) manifest.put("revalued_from", source);
             var expected = json.readValue(job.get("store_versions").toString(), Map.class);
-            var actual = (Map<?,?>) manifest.get("store_versions");
+            var actual = (Map<?,?>) manifest.get(source == null ? "store_versions" : "cost_store_versions");
             for (var entry : actual.entrySet()) {
-                if (!entry.getValue().toString().equals(expected.get(entry.getKey())))
-                    throw new ApiException(409, "店铺数据已变化，请重新提交报表任务");
+                if (!entry.getValue().toString().equals(expected.get(entry.getKey()))) {
+                    jobs.finish(id, "STALE", "店铺数据已变化，请按最新数据重新生成");
+                    return;
+                }
             }
             var result = calculator.compute(manifest);
             String manifestJson = json.writeValueAsString(manifest);
             String resultJson = json.writeValueAsString(result);
             String storesJson = json.writeValueAsString(query.store_ids());
             tx.executeWithoutResult(status -> {
-                for (long store : query.store_ids()) access.require(user, store, "read", true);
+                for (long store : query.store_ids()) {
+                    var current = access.require(user, store, source == null ? "read" : "members", true);
+                    if (!current.get("data_version").toString().equals(expected.get(Long.toString(store)))) {
+                        jobs.finish(id, "STALE", "店铺数据已变化，请按最新数据重新生成");
+                        return;
+                    }
+                }
                 if (jobs.finish(id, "SUCCEEDED", null) != 1) throw new IllegalStateException("任务状态已变化");
                 reports.save(id, ((Number) manifest.get("owner_id")).longValue(), storesJson, manifestJson, resultJson, user);
             });
@@ -118,6 +150,13 @@ class MarginJobs {
             log.error("Margin report job {} failed", id, failure);
             jobs.finish(id, "FAILED", "报表计算失败，可重试");
         }
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String,Object> sourceManifest(String source) {
+        var row = reports.get(source);
+        if (row == null) throw new ApiException(404, "报表不存在");
+        return json.readValue(row.get("input_manifest").toString(), Map.class);
     }
 
     private Map<String,Object> require(long user, String id) {
@@ -141,6 +180,7 @@ class MarginJobs {
         result.put("id", row.get("id"));
         result.put("status", row.get("status"));
         result.put("attempts", row.get("attempts"));
+        if (row.get("source_report_id") != null) result.put("source_report_id", row.get("source_report_id"));
         if ("SUCCEEDED".equals(row.get("status"))) result.put("report_id", row.get("id"));
         if (row.get("error_message") != null) result.put("error", row.get("error_message"));
         return result;

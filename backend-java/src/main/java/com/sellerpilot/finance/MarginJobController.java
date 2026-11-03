@@ -31,4 +31,10 @@ class MarginJobController {
     Map<String,Object> retry(@AuthenticationPrincipal Long user, @PathVariable String id) {
         return jobs.retry(user, id);
     }
+
+    @PostMapping("/{id}/regenerate")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    Map<String,Object> regenerate(@AuthenticationPrincipal Long user, @PathVariable String id) {
+        return jobs.regenerate(user, id);
+    }
 }

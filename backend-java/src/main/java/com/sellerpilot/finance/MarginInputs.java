@@ -11,7 +11,7 @@ public class MarginInputs {
     private final StoreAccess access;private final FxMapper fx;private final MarginMapper reports;
     public MarginInputs(StoreAccess access,FxMapper fx,MarginMapper reports){this.access=access;this.fx=fx;this.reports=reports;}
     @SuppressWarnings("unchecked")
-    @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ)
+    @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ,timeout=15)
     public Map<String,Object> revalueCosts(long user,Map<String,Object> original){
         Map<String,Object> costVersions=new LinkedHashMap<>();
         for(Object id:(List<?>)original.get("store_ids")){Map<String,Object> store=access.require(user,((Number)id).longValue(),"members",false);costVersions.put(String.valueOf(id),store.get("data_version"));}
@@ -33,7 +33,7 @@ public class MarginInputs {
         result.put("cost_basis","LATEST_BATCH_REVISIONS_AT_REVALUATION");result.put("cost_store_versions",costVersions);return result;
     }
     @SuppressWarnings("unchecked") private static List<Map<String,Object>> costParts(Map<String,Object> row,String type){if(row.containsKey("cost_allocations"))return (List<Map<String,Object>>)row.get("cost_allocations");Map<String,Object> part=new LinkedHashMap<>(row);part.put("quantity",row.get(type.equals("sales")?"quantity":"returned_quantity"));return List.of(part);}
-    @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ)
+    @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ,timeout=15)
     public Map<String,Object> capture(long user,MarginController.Query query){
         List<Long> ids=query.store_ids().stream().distinct().sorted().toList();long owner=0;
         Map<String,Object> versions=new LinkedHashMap<>();List<Map<String,Object>> sales=new ArrayList<>(),refunds=new ArrayList<>();
@@ -41,7 +41,7 @@ public class MarginInputs {
             Map<String,Object> store=access.require(user,id,"read",false);long current=Rows.number(store,"owner_id");
             if(owner!=0&&owner!=current)throw new ApiException(422,"报表店铺须属于同一所有者");owner=current;versions.put(String.valueOf(id),store.get("data_version"));
             sales.addAll(reports.sales(id,query.start().atStartOfDay(),query.end().atStartOfDay()));refunds.addAll(reports.refunds(id,query.start().atStartOfDay(),query.end().atStartOfDay()));
-            if(sales.size()+refunds.size()>10000)throw new ApiException(422,"当前同步报表最多10000条销售/退款记录，请缩小范围");
+            if(sales.size()+refunds.size()>10000)throw new ApiException(422,"报表最多10000条销售/退款记录，请缩小范围");
         }
         Map<String,Object> set=fx.get(owner,query.fx_rate_set_id());if(set==null)throw new ApiException(404,"汇率集不存在或不属于该卖家");
         attachCosts(sales,false);attachCosts(refunds,true);

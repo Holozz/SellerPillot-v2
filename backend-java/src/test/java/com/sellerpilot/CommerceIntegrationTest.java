@@ -80,6 +80,53 @@ class CommerceIntegrationTest {
         assertEquals(200,send("GET","/api/v2/margin-reports/"+id,null,token).status);
         assertEquals(1,db.queryForObject("SELECT COUNT(*) FROM margin_reports",Integer.class));
     }
+    Reply generateMargin(Map<String,Object> query) throws Exception {
+        Reply job = send("POST","/api/v2/margin-reports",query,token);
+        assertEquals(202,job.status,job.body.toString());
+        String id = (String) job.body.get("id");
+        Reply status = awaitMarginJob(id);
+        assertEquals("SUCCEEDED",status.body.get("status"),status.body.toString());
+        return send("GET","/api/v2/margin-reports/"+id,null,token);
+    }
+    Reply revalue(Reply source) throws Exception {
+        Reply job = send("POST", "/api/v2/margin-reports/"+source.body.get("id")+"/revalue-costs",null,token);
+        assertEquals(202,job.status,job.body.toString());
+        String id = (String) job.body.get("id");
+        Reply status = awaitMarginJob(id);
+        assertEquals("SUCCEEDED",status.body.get("status"),status.body.toString());
+        return send("GET","/api/v2/margin-reports/"+id,null,token);
+    }
+    Reply awaitMarginJob(String id) throws Exception {
+        String path = "/api/v2/margin-report-jobs/"+id;
+        Reply status = send("GET",path,null,token);
+        for (int i=0; i<50 && Set.of("QUEUED","RUNNING").contains(status.body.get("status")); i++) {
+            Thread.sleep(100);
+            status = send("GET",path,null,token);
+        }
+        return status;
+    }
+    @Test void outdatedMarginJobRegeneratesUnderCurrentVersions() throws Exception {
+        var fx = send("POST", "/api/v2/stores/"+sid+"/fx-rate-sets", Map.of(
+            "source","fixture","source_revision","stale","rates",
+            List.of(Map.of("base_currency","USD","effective_date","2026-11-01","rate","7.00"))), token);
+        assertEquals(200,fx.status,fx.body.toString());
+        var request = Map.of("store_ids",List.of(sid),"fx_rate_set_id",fx.body.get("id"),
+            "start","2026-11-01","end","2026-11-02");
+        String id = UUID.randomUUID().toString().replace("-","");
+        db.update("""
+            INSERT INTO margin_report_jobs(id,request_key,requested_by,query_json,store_versions,status)
+            VALUES(?,?,(SELECT owner_id FROM stores WHERE id=?),?,?,'QUEUED')
+            """,id,id,sid,json.writeValueAsString(request),json.writeValueAsString(Map.of(Long.toString(sid),"-1")));
+        assertEquals("STALE",awaitMarginJob(id).body.get("status"));
+        String path = "/api/v2/margin-report-jobs/"+id;
+        assertEquals("STALE",send("POST",path+"/retry",null,token).body.get("status"));
+        var replacement = send("POST",path+"/regenerate",null,token);
+        assertEquals(202,replacement.status,replacement.body.toString());
+        String next = (String) replacement.body.get("id");
+        assertNotEquals(id,next);
+        assertEquals("SUCCEEDED",awaitMarginJob(next).body.get("status"));
+        assertEquals(404,send("GET","/api/v2/margin-reports/"+id,null,token).status);
+    }
     Map<String,Object> query(String metric){return Map.of("metric",metric,"group_by","currency","start","2026-10-01T00:00:00Z","end","2026-10-03T00:00:00Z");}
     @Test void exchangeRateSetsPreserveVersionsAndRejectDuplicateDates()throws Exception{
         Map<String,Object> rate=Map.of("base_currency","USD","effective_date","2026-11-01","rate","7.00");
@@ -109,7 +156,7 @@ class CommerceIntegrationTest {
         assertEquals(409,sourceCsv(store,"order-items",over).status);assertEquals(1,db.queryForObject("SELECT COUNT(*) FROM sales_line_revisions WHERE store_id=?",Integer.class,store));
         long fx=((Number)send("POST","/api/v2/stores/"+store+"/fx-rate-sets",Map.of("source","fixture","source_revision","multi","rates",List.of(Map.of("base_currency","USD","effective_date","2026-11-01","rate","7.00"))),token).body.get("id")).longValue();
         Map<String,Object> query=Map.of("store_ids",List.of(store),"fx_rate_set_id",fx,"start","2026-11-01","end","2026-11-02");
-        Reply report=send("POST","/api/v2/margin-reports",query,token);assertEquals(200,report.status,report.body.toString());Map<String,Object> result=(Map<String,Object>)report.body.get("result");assertEquals("30.00",result.get("sales_net_cny"));assertEquals("16.00",result.get("procurement_cost_cny"));assertEquals("14.00",result.get("gross_margin_cny"));
+        Reply report=generateMargin(query);assertEquals(200,report.status,report.body.toString());Map<String,Object> result=(Map<String,Object>)report.body.get("result");assertEquals("30.00",result.get("sales_net_cny"));assertEquals("16.00",result.get("procurement_cost_cny"));assertEquals("14.00",result.get("gross_margin_cny"));
         String refundHeader="platform_code,store_key,external_refund_id,external_line_id,confirmed_at,refund_amount,currency,returned_quantity,restocked";
         String refund="market-a,multi,MR-1,M-LINE,2026-11-02T00:00:00Z,10.00,CNY,1,true";
         assertEquals(422,sourceCsv(store,"refunds",refundHeader+"\n"+refund+"\n").status);
@@ -117,9 +164,49 @@ class CommerceIntegrationTest {
         assertEquals(200,sourceCsv(store,"refunds",returns).status);
         String excess=refundHeader+",return_allocations\n"+refund.replace("MR-1","MR-2").replace(",1,true",",2,true")+","+cell(List.of(Map.of("source_batch_id","LOT-B","quantity",2)))+"\n";
         assertEquals(409,sourceCsv(store,"refunds",excess).status);
-        Reply returned=send("POST","/api/v2/margin-reports",Map.of("store_ids",List.of(store),"fx_rate_set_id",fx,"start","2026-11-02","end","2026-11-03"),token);assertEquals("-4.00",((Map<String,Object>)returned.body.get("result")).get("gross_margin_cny"));
+        Reply returned=generateMargin(Map.of("store_ids",List.of(store),"fx_rate_set_id",fx,"start","2026-11-02","end","2026-11-03"));assertEquals("-4.00",((Map<String,Object>)returned.body.get("result")).get("gross_margin_cny"));
         assertEquals(200,sourceCsv(store,"procurement-batches",batchHeader+batchB.replace(",6.00,CNY",",7.00,CNY"),true).status);
-        Reply revised=send("POST","/api/v2/margin-reports/"+report.body.get("id")+"/revalue-costs",null,token);assertEquals(200,revised.status,revised.body.toString());assertEquals("12.00",((Map<String,Object>)revised.body.get("result")).get("gross_margin_cny"));
+        Reply revised;
+        StringBuilder imported = new StringBuilder("external_order_id,ordered_at,status,currency\n");
+        for (int i=0; i<500; i++) imported.append("mixed-").append(i).append(",2026-10-02T00:00:00Z,paid,USD\n");
+        var start = new CountDownLatch(1);
+        var latencies = new ConcurrentLinkedQueue<Long>();
+        var rejected = new java.util.concurrent.atomic.AtomicInteger();
+        try (var pool = Executors.newFixedThreadPool(6)) {
+            var readers = new ArrayList<Future<?>>();
+            for (int i=0; i<4; i++) readers.add(pool.submit(() -> {
+                start.await();
+                for (int j=0; j<20; j++) {
+                    long before = System.nanoTime();
+                    var response = send("POST","/api/v2/stores/"+sid+"/metrics/query",query("sales"),token);
+                    if (response.status == 503 && "经营查询繁忙，请稍后重试".equals(response.body.get("detail"))) {
+                        rejected.incrementAndGet();
+                    } else {
+                        assertEquals(200,response.status,response.body.toString());
+                        latencies.add(TimeUnit.NANOSECONDS.toMillis(System.nanoTime()-before));
+                    }
+                }
+                return null;
+            }));
+            var importer = pool.submit(() -> { start.await(); return csv("orders",imported.toString()); });
+            var revaluation = pool.submit(() -> {
+                start.await();
+                long before = System.nanoTime();
+                Reply saved = revalue(report);
+                System.out.println("mixed_smoke revalue_ms="+TimeUnit.NANOSECONDS.toMillis(System.nanoTime()-before));
+                return saved;
+            });
+            start.countDown();
+            assertEquals(200,importer.get(15,TimeUnit.SECONDS).status);
+            revised = revaluation.get(15,TimeUnit.SECONDS);
+            for (var reader : readers) reader.get(15,TimeUnit.SECONDS);
+        }
+        var sorted = latencies.stream().sorted().toList();
+        assertFalse(sorted.isEmpty());
+        assertEquals(80,sorted.size()+rejected.get());
+        System.out.println("mixed_smoke query_count=80 rejected="+rejected.get()
+            +" successful_query_p95_ms="+sorted.get((int)Math.ceil(sorted.size()*0.95)-1)+" imported_orders=500");
+        assertEquals(200,revised.status,revised.body.toString());assertEquals("12.00",((Map<String,Object>)revised.body.get("result")).get("gross_margin_cny"));
         assertEquals(result,send("POST","/api/v2/margin-reports/"+report.body.get("id")+"/recompute",null,token).body);
     }
     @Test void queryMatchesHandCalculationAndDoesNotCountJoinDuplicates()throws Exception{
@@ -250,35 +337,35 @@ class CommerceIntegrationTest {
             Map.of("base_currency","EUR","effective_date","2026-10-30","rate","7.80"),
             Map.of("base_currency","EUR","effective_date","2026-11-02","rate","8.00"));
         Reply rateSet=send("POST","/api/v2/stores/"+sourceSid+"/fx-rate-sets",Map.of("source","fixture","source_revision","margin-v1","rates",rates),token);assertEquals(200,rateSet.status);
-        Reply report=send("POST","/api/v2/margin-reports",Map.of("store_ids",List.of(sourceSid,marketBSid),"fx_rate_set_id",rateSet.body.get("id"),"start","2026-11-01","end","2026-11-03"),token);assertEquals(200,report.status,report.body.toString());
+        Reply report=generateMargin(Map.of("store_ids",List.of(sourceSid,marketBSid),"fx_rate_set_id",rateSet.body.get("id"),"start","2026-11-01","end","2026-11-03"));assertEquals(200,report.status,report.body.toString());
         Map<String,Object> result=(Map<String,Object>)report.body.get("result");assertEquals("133.30",result.get("gross_margin_cny"));assertEquals("286.00",result.get("sales_net_cny"));assertEquals("152.70",result.get("procurement_cost_cny"));assertEquals(true,result.get("complete"));
         Files.writeString(Path.of("../docs/verification/p0-contract/actual-margin.json"),json.writeValueAsString(Map.of("environment",db.queryForObject("SELECT VERSION()",String.class),"expected",Map.of("sales_net_cny","286.00","procurement_cost_cny","152.70","gross_margin_cny","133.30"),"actual",result)));
         assertEquals(result,send("POST","/api/v2/margin-reports/"+report.body.get("id")+"/recompute",null,token).body);
-        Reply fixed=send("POST","/api/v2/margin-reports",Map.of("store_ids",List.of(sourceSid,marketBSid),"fx_rate_set_id",rateSet.body.get("id"),"start","2026-11-01","end","2026-11-03","fixed_rate_date","2026-11-02"),token);
+        Reply fixed=generateMargin(Map.of("store_ids",List.of(sourceSid,marketBSid),"fx_rate_set_id",rateSet.body.get("id"),"start","2026-11-01","end","2026-11-03","fixed_rate_date","2026-11-02"));
         assertEquals(200,fixed.status,fixed.body.toString());assertEquals("131.00",((Map<String,Object>)fixed.body.get("result")).get("gross_margin_cny"));
         List<Map<String,Object>> changedRates=rates.stream().map(rate->{Map<String,Object> copy=new HashMap<>(rate);if(rate.get("base_currency").equals("USD")&&rate.get("effective_date").equals("2026-11-01"))copy.put("rate","8.00");return copy;}).toList();
         Reply changedSet=send("POST","/api/v2/stores/"+sourceSid+"/fx-rate-sets",Map.of("source","fixture","source_revision","fx-change","rates",changedRates),token);
-        Reply fxReport=send("POST","/api/v2/margin-reports",Map.of("store_ids",List.of(sourceSid,marketBSid),"fx_rate_set_id",changedSet.body.get("id"),"start","2026-11-01","end","2026-11-03"),token);
+        Reply fxReport=generateMargin(Map.of("store_ids",List.of(sourceSid,marketBSid),"fx_rate_set_id",changedSet.body.get("id"),"start","2026-11-01","end","2026-11-03"));
         Reply fxDiff=send("POST","/api/v2/margin-reports/compare",Map.of("baseline_id",report.body.get("id"),"target_id",fxReport.body.get("id")),token);assertEquals(200,fxDiff.status,fxDiff.body.toString());assertEquals("0.00",fxDiff.body.get("business_data_delta_cny"));assertEquals("18.00",fxDiff.body.get("fx_delta_cny"));
         assertEquals(422,send("POST","/api/v2/margin-reports/compare",Map.of("baseline_id",report.body.get("id"),"target_id",fixed.body.get("id")),token).status);
-        Reply refundReport=send("POST","/api/v2/margin-reports",Map.of("store_ids",List.of(sourceSid),"fx_rate_set_id",rateSet.body.get("id"),"start","2026-11-03","end","2026-11-04"),token);assertEquals(200,refundReport.status,refundReport.body.toString());
+        Reply refundReport=generateMargin(Map.of("store_ids",List.of(sourceSid),"fx_rate_set_id",rateSet.body.get("id"),"start","2026-11-03","end","2026-11-04"));assertEquals(200,refundReport.status,refundReport.body.toString());
         assertEquals("-1.20",((Map<String,Object>)refundReport.body.get("result")).get("gross_margin_cny"));
         Reply partialSet=send("POST","/api/v2/stores/"+sourceSid+"/fx-rate-sets",Map.of("source","fixture","source_revision","partial","rates",List.of(rates.get(1))),token);
-        Reply partial=send("POST","/api/v2/margin-reports",Map.of("store_ids",List.of(sourceSid,marketBSid),"fx_rate_set_id",partialSet.body.get("id"),"start","2026-11-01","end","2026-11-03"),token);assertEquals(200,partial.status);
+        Reply partial=generateMargin(Map.of("store_ids",List.of(sourceSid,marketBSid),"fx_rate_set_id",partialSet.body.get("id"),"start","2026-11-01","end","2026-11-03"));assertEquals(200,partial.status);
         assertEquals(false,((Map<String,Object>)partial.body.get("result")).get("complete"));assertNull(((Map<String,Object>)partial.body.get("result")).get("gross_margin_cny"));
         assertEquals(422,send("POST","/api/v2/margin-reports/compare",Map.of("baseline_id",report.body.get("id"),"target_id",partial.body.get("id")),token).status);
         assertEquals(result,((Map<String,Object>)send("GET","/api/v2/margin-reports/"+report.body.get("id"),null,token).body.get("result")));
         assertEquals(200,sourceCsv(sourceSid,"orders",file.replace(",paid,USD",",cancelled,USD"),true).status);
-        Reply correctedReport=send("POST","/api/v2/margin-reports",Map.of("store_ids",List.of(sourceSid,marketBSid),"fx_rate_set_id",rateSet.body.get("id"),"start","2026-11-01","end","2026-11-03"),token);
+        Reply correctedReport=generateMargin(Map.of("store_ids",List.of(sourceSid,marketBSid),"fx_rate_set_id",rateSet.body.get("id"),"start","2026-11-01","end","2026-11-03"));
         assertEquals(200,correctedReport.status,correctedReport.body.toString());assertEquals("62.50",((Map<String,Object>)correctedReport.body.get("result")).get("gross_margin_cny"));
         Reply dataDiff=send("POST","/api/v2/margin-reports/compare",Map.of("baseline_id",report.body.get("id"),"target_id",correctedReport.body.get("id")),token);assertEquals(200,dataDiff.status,dataDiff.body.toString());assertEquals("-70.80",dataDiff.body.get("business_data_delta_cny"));assertEquals("0.00",dataDiff.body.get("fx_delta_cny"));assertFalse(((List<?>)dataDiff.body.get("changed_events")).isEmpty());
         assertEquals(result,send("POST","/api/v2/margin-reports/"+report.body.get("id")+"/recompute",null,token).body);
         send("POST","/auth/register",Map.of("username","margin-viewer","password","Password123!"),null);
         assertEquals(200,sourceCsv(sourceSid,"procurement-batches",lot.replace(",4.00,USD",",5.00,USD"),true).status);
-        Reply revalued=send("POST","/api/v2/margin-reports/"+report.body.get("id")+"/revalue-costs",null,token);assertEquals(200,revalued.status,revalued.body.toString());assertEquals("119.50",((Map<String,Object>)revalued.body.get("result")).get("gross_margin_cny"));
+        Reply revalued=revalue(report);assertEquals(200,revalued.status,revalued.body.toString());assertEquals("119.50",((Map<String,Object>)revalued.body.get("result")).get("gross_margin_cny"));
         Reply costDiff=send("POST","/api/v2/margin-reports/compare",Map.of("baseline_id",report.body.get("id"),"target_id",revalued.body.get("id")),token);assertEquals(200,costDiff.status,costDiff.body.toString());assertEquals("-13.80",costDiff.body.get("business_data_delta_cny"));assertEquals("0.00",costDiff.body.get("fx_delta_cny"));
         assertEquals(result,send("POST","/api/v2/margin-reports/"+report.body.get("id")+"/recompute",null,token).body);
-        Reply refundRevaluation=send("POST","/api/v2/margin-reports/"+refundReport.body.get("id")+"/revalue-costs",null,token);assertEquals(200,refundRevaluation.status);assertEquals("5.70",((Map<String,Object>)refundRevaluation.body.get("result")).get("gross_margin_cny"));
+        Reply refundRevaluation=revalue(refundReport);assertEquals(200,refundRevaluation.status);assertEquals("5.70",((Map<String,Object>)refundRevaluation.body.get("result")).get("gross_margin_cny"));
         assertEquals(2,db.queryForObject("SELECT COUNT(*) FROM sales_line_revisions",Integer.class));
         String viewer=(String)send("POST","/auth/login",Map.of("username","margin-viewer","password","Password123!"),null).body.get("access_token");
         for(long storeId:List.of(sourceSid,marketBSid))assertEquals(200,send("PUT","/api/v2/stores/"+storeId+"/members",Map.of("username","margin-viewer","role","viewer"),token).status);

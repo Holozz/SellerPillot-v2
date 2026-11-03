@@ -18,11 +18,11 @@ interface MarginJobMapper {
     Map<String,Object> get(String id);
 
     @Insert("""
-        INSERT INTO margin_report_jobs(id,request_key,requested_by,query_json,store_versions,status)
-        VALUES(#{id},#{key},#{user},#{query},#{versions},'QUEUED')
+        INSERT INTO margin_report_jobs(id,request_key,requested_by,query_json,store_versions,source_report_id,status)
+        VALUES(#{id},#{key},#{user},#{query},#{versions},#{source},'QUEUED')
         """)
     void insert(@Param("id") String id, @Param("key") String key, @Param("user") long user,
-                @Param("query") String query, @Param("versions") String versions);
+                @Param("query") String query, @Param("versions") String versions, @Param("source") String source);
 
     @Select("SELECT * FROM margin_report_jobs WHERE status='QUEUED' ORDER BY queued_at,id LIMIT 1 FOR UPDATE")
     Map<String,Object> next();
