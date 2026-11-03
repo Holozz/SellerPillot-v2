@@ -140,6 +140,7 @@ class MarginJobs {
             summaryResult.put("products",products.subList(0,Math.min(50,products.size())));
             String summaryJson = json.writeValueAsString(Map.of("id",id,"input_manifest",summaryManifest,"result",summaryResult));
             String storesJson = json.writeValueAsString(query.store_ids());
+            String scopeKey = scopeKey(query);
             tx.executeWithoutResult(status -> {
                 for (long store : query.store_ids()) {
                     var current = access.require(user, store, source == null ? "read" : "members", true);
@@ -150,6 +151,7 @@ class MarginJobs {
                 }
                 if (jobs.finish(id, "SUCCEEDED", null) != 1) throw new IllegalStateException("任务状态已变化");
                 reports.save(id, ((Number) manifest.get("owner_id")).longValue(), storesJson, manifestJson, resultJson, summaryJson, user);
+                reports.publishLatest(scopeKey,id);
             });
         } catch (ApiException failure) {
             jobs.finish(id, "FAILED", String.valueOf(failure.detail));
@@ -191,6 +193,13 @@ class MarginJobs {
         if ("SUCCEEDED".equals(row.get("status"))) result.put("report_id", row.get("id"));
         if (row.get("error_message") != null) result.put("error", row.get("error_message"));
         return result;
+    }
+
+    String scopeKey(MarginController.Query query) {
+        // Keep the scope format aligned with the V17 historical report backfill.
+        String stores = json.writeValueAsString(query.store_ids().stream().distinct().sorted().toList());
+        return digest(String.join("|",stores,query.start().toString(),query.end().toString(),
+            Long.toString(query.fx_rate_set_id()),Objects.toString(query.fixed_rate_date(),"")));
     }
 
     private static String digest(String value) {

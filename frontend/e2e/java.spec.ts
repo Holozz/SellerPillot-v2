@@ -24,6 +24,7 @@ test('毛利报表界面：跨店选择、缺汇率提示和历史复算',async(
     else if(p.endsWith('/revalue-costs')){revaluations++;body={id:'job-2',status:'QUEUED',source_report_id:'report-1'}}
     else if(p.endsWith('/job-2'))body={id:'job-2',status:'SUCCEEDED',report_id:'report-2',source_report_id:'report-1'}
     else if(p.endsWith('/details'))body={rows:result.details}
+    else if(p.endsWith('/latest')){expect(route.request().postDataJSON().store_ids).toEqual([1,2]);body=saved}
     else if(p.endsWith('/report-2/summary'))body={...saved,id:'report-2',input_manifest:{...saved.input_manifest,revalued_from:'report-1'}}
     else if(p.endsWith('/report-1/summary'))body=saved
     await route.fulfill({json:body})
@@ -36,6 +37,8 @@ test('毛利报表界面：跨店选择、缺汇率提示和历史复算',async(
   await page.getByLabel('结束日期（不含，UTC）',{exact:true}).fill('2026-11-03')
   await page.getByLabel('历史汇率版本',{exact:true}).selectOption('1')
   await expect(page.getByRole('button',{name:'生成并保存毛利报表'})).toBeEnabled()
+  await page.getByRole('button',{name:'查看最新报表'}).click()
+  await expect(page.getByRole('heading',{name:'报表 report-1',exact:true})).toBeVisible()
   await page.getByRole('button',{name:'生成并保存毛利报表'}).click()
   await expect(page.getByText('报表任务 排队中',{exact:true})).toBeVisible()
   await page.getByRole('button',{name:'刷新任务状态'}).click()

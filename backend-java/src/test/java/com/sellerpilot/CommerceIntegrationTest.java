@@ -630,12 +630,20 @@ class CommerceIntegrationTest {
         assertEquals(result,((Map<String,Object>)send("GET","/api/v2/margin-reports/"+report.body.get("id"),null,token).body.get("result")));
         assertEquals(200,sourceCsv(sourceSid,"orders",file.replace(",paid,USD",",cancelled,USD"),true).status);
         Reply correctedReport=generateMargin(Map.of("store_ids",List.of(sourceSid,marketBSid),"fx_rate_set_id",rateSet.body.get("id"),"start","2026-11-01","end","2026-11-03"));
+        String latestPath = "/api/v2/margin-reports/latest";
+        var latestScope = Map.of("store_ids",List.of(marketBSid,sourceSid,sourceSid),"fx_rate_set_id",rateSet.body.get("id"),
+            "start","2026-11-01","end","2026-11-03");
+        assertEquals(correctedReport.body.get("id"),send("POST",latestPath,latestScope,token).body.get("id"));
         assertEquals(200,correctedReport.status,correctedReport.body.toString());assertEquals("62.50",((Map<String,Object>)correctedReport.body.get("result")).get("gross_margin_cny"));
         Reply dataDiff=send("POST","/api/v2/margin-reports/compare",Map.of("baseline_id",report.body.get("id"),"target_id",correctedReport.body.get("id")),token);assertEquals(200,dataDiff.status,dataDiff.body.toString());assertEquals("-70.80",dataDiff.body.get("business_data_delta_cny"));assertEquals("0.00",dataDiff.body.get("fx_delta_cny"));assertFalse(((List<?>)dataDiff.body.get("changed_events")).isEmpty());
         assertEquals(result,send("POST","/api/v2/margin-reports/"+report.body.get("id")+"/recompute",null,token).body);
         send("POST","/auth/register",Map.of("username","margin-viewer","password","Password123!"),null);
         assertEquals(200,sourceCsv(sourceSid,"procurement-batches",lot.replace(",4.00,USD",",5.00,USD"),true).status);
         Reply revalued=revalue(report);assertEquals(200,revalued.status,revalued.body.toString());assertEquals("119.50",((Map<String,Object>)revalued.body.get("result")).get("gross_margin_cny"));
+        assertEquals(revalued.body.get("id"),send("POST",latestPath,latestScope,token).body.get("id"));
+        var fixedScope = new HashMap<>(latestScope);
+        fixedScope.put("fixed_rate_date","2026-11-02");
+        assertEquals(fixed.body.get("id"),send("POST",latestPath,fixedScope,token).body.get("id"));
         Reply costDiff=send("POST","/api/v2/margin-reports/compare",Map.of("baseline_id",report.body.get("id"),"target_id",revalued.body.get("id")),token);assertEquals(200,costDiff.status,costDiff.body.toString());assertEquals("-13.80",costDiff.body.get("business_data_delta_cny"));assertEquals("0.00",costDiff.body.get("fx_delta_cny"));
         assertEquals(result,send("POST","/api/v2/margin-reports/"+report.body.get("id")+"/recompute",null,token).body);
         Reply refundRevaluation=revalue(refundReport);assertEquals(200,refundRevaluation.status);assertEquals("5.70",((Map<String,Object>)refundRevaluation.body.get("result")).get("gross_margin_cny"));
@@ -648,6 +656,7 @@ class CommerceIntegrationTest {
         send("PUT","/api/v2/stores/"+marketBSid+"/members",Map.of("username","margin-viewer","role","viewer","active",false),token);
         assertEquals(404,send("GET","/api/v2/margin-reports/"+report.body.get("id"),null,viewer).status);
         assertEquals(404,send("GET","/api/v2/margin-reports/"+report.body.get("id")+"/summary",null,viewer).status);
+        assertEquals(404,send("POST",latestPath,latestScope,viewer).status);
         assertEquals(404,send("GET","/api/v2/margin-reports/"+report.body.get("id")+"/details",null,viewer).status);
         assertEquals(404,send("POST","/api/v2/margin-reports/"+report.body.get("id")+"/recompute",null,viewer).status);
         assertEquals(404,send("POST","/api/v2/margin-reports/compare",Map.of("baseline_id",report.body.get("id"),"target_id",correctedReport.body.get("id")),viewer).status);

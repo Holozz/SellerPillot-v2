@@ -30,6 +30,13 @@ public class MarginController {
     public Map<String,Object> create(@AuthenticationPrincipal Long user, @Valid @RequestBody Query query){
         return jobs.submit(user,query);
     }
+    @PostMapping("/latest")
+    public Map<String,Object> latest(@AuthenticationPrincipal Long user, @Valid @RequestBody Query query){
+        for (long store : query.store_ids().stream().distinct().sorted().toList()) access.require(user,store,"read",false);
+        String id = reports.latestId(jobs.scopeKey(query));
+        if (id == null) throw new ApiException(404,"此报表范围尚无已发布版本");
+        return summary(user,id);
+    }
     @GetMapping("/{id}") public Map<String,Object> get(@AuthenticationPrincipal Long user,@PathVariable String id){
         Map<String,Object> row=require(user,id);return Map.of("id",id,"input_manifest",json.readValue(String.valueOf(row.get("input_manifest")),Map.class),"result",json.readValue(String.valueOf(row.get("result")),Map.class));
     }

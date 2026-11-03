@@ -49,6 +49,15 @@ public interface MarginMapper {
     @Select("SELECT summary_json FROM margin_reports WHERE id=#{id}")
     String savedSummary(String id);
 
+    @Insert("""
+        INSERT INTO latest_margin_reports(scope_key,report_id) VALUES(#{key},#{id})
+        ON DUPLICATE KEY UPDATE report_id=#{id}
+        """)
+    void publishLatest(@Param("key") String key, @Param("id") String id);
+
+    @Select("SELECT report_id FROM latest_margin_reports WHERE scope_key=#{key}")
+    String latestId(String key);
+
     @Select("""
         SELECT JSON_REMOVE(input_manifest,'$.sales','$.refunds','$.rates') AS input_manifest,
                JSON_REMOVE(result,'$.details','$.unpriced_events','$.products') AS result,

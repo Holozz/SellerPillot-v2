@@ -59,6 +59,7 @@ export default function MarginReports({ store, stores, onSessionExpired }: { sto
       }
     }
   }
+  const reportQuery = { store_ids: selected, fx_rate_set_id: Number(rateSet), start, end, ...(fixed ? { fixed_rate_date: fixedDate } : {}) }
   return <section className="source-history">
     <div className="section-heading"><div><h2>人民币销售毛利报表</h2><p>按付款日确认销售、退款确认日冲减收入，采购成本按批次入库日折算；仅确认退货入库时转回成本。</p></div><button className="quiet-button" disabled={busy} onClick={() => void run(refresh)}>刷新汇率与历史</button></div>
     {error && <p className="error-message" role="alert">{error}</p>}{notice && <p role="status">{notice}</p>}{busy && <p role="status">正在处理…</p>}
@@ -78,7 +79,7 @@ export default function MarginReports({ store, stores, onSessionExpired }: { sto
       </form>
     </details>
     <form onSubmit={event => { event.preventDefault(); void run(async signal => {
-      const created = await request<MarginJob>('/v2/margin-report-jobs', { method: 'POST', body: JSON.stringify({ store_ids: selected, fx_rate_set_id: Number(rateSet), start, end, ...(fixed ? { fixed_rate_date: fixedDate } : {}) }), signal })
+      const created = await request<MarginJob>('/v2/margin-report-jobs', { method: 'POST', body: JSON.stringify(reportQuery), signal })
       await showJob(created, signal)
     }) }}>
       <fieldset disabled={busy}><legend>同一卖家的目标店铺</legend>{stores.filter(candidate => candidate.owner_id === store.owner_id).map(candidate => <label key={candidate.id} className="margin-store"><input type="checkbox" checked={selected.includes(candidate.id)} onChange={event => setSelected(previous => event.target.checked ? [...previous, candidate.id] : previous.filter(id => id !== candidate.id))} />{candidate.name} · {candidate.platform}</label>)}</fieldset>
@@ -88,6 +89,10 @@ export default function MarginReports({ store, stores, onSessionExpired }: { sto
       </div>
       <label className="margin-store"><input type="checkbox" checked={fixed} disabled={busy} onChange={event => setFixed(event.target.checked)} />使用固定日期汇率折算销售、退款与采购成本</label>
       {fixed && <label>固定汇率日期<input type="date" required value={fixedDate} disabled={busy} onChange={event => setFixedDate(event.target.value)} /></label>}
+      <button type="button" className="quiet-button" disabled={busy || !selected.length || !rateSet || !start || !end || (fixed && !fixedDate)} onClick={() => void run(async signal => {
+        const latest = await request<Report>('/v2/margin-reports/latest', { method: 'POST', body: JSON.stringify(reportQuery), signal })
+        if (!signal.aborted) { setReport(latest); setDetails(null); setDetailPage(0) }
+      })}>查看最新报表</button>
     </form>
     {job && <div>
       <p role="status">报表任务 {jobLabels[job.status]}{job.error ? `（${job.error}）` : ''}</p>
