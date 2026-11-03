@@ -1,5 +1,7 @@
 import {test,expect} from '@playwright/test'
 import path from 'node:path'
+import {spawn} from 'node:child_process'
+import {createInterface} from 'node:readline'
 
 test('毛利报表界面：跨店选择、缺汇率提示和历史复算',async({page})=>{
   const result={complete:false,event_count:2,priced_event_count:1,sales_net_cny:'126.00',refunds_cny:'0.00',procurement_cost_cny:'55.20',returned_cost_cny:'0.00',known_margin_cny:'70.80',gross_margin_cny:null,products:[{internal_sku:'MUG-01',known_margin_cny:'70.80'}],details:[{store_id:2,source_row_id:9,external_line_id:'B-1',event:'sales',original_amount:'20.00',currency:'EUR',original_purchase_cost:'12.50',cost_currency:'EUR',revenue_rate_date:'2026-11-02',revenue_rate:null,cost_rate_date:'MULTIPLE',cost_rate:null,complete:false,cost_allocations:[{source_batch_id:'LOT-A',procurement_batch_id:1,cost_batch_revision:1,quantity:1,cost_currency:'EUR',unit_purchase_cost:'5.00',rate_date:'2026-10-30',rate:'7.80',cost_cny_unrounded:'39.00'},{source_batch_id:'LOT-B',procurement_batch_id:2,cost_batch_revision:2,quantity:1,cost_currency:'EUR',unit_purchase_cost:'7.50',rate_date:'2026-10-31',rate:null}]}]}
@@ -206,7 +208,33 @@ test('真实毛利报表：页面提交任务并读取最新已发布版本',asy
   await page.getByLabel('结束日期（不含，UTC）',{exact:true}).fill('2026-11-02')
   await page.getByLabel('历史汇率版本',{exact:true}).selectOption(String(fx.id))
   await expect(page.getByRole('button',{name:'生成并保存毛利报表'})).toBeEnabled()
-  await page.getByRole('button',{name:'生成并保存毛利报表'}).click()
+  const submit=page.getByRole('button',{name:'生成并保存毛利报表'})
+  if(process.env.PLAYWRIGHT_STALE_MYSQL==='true'){
+    expect(Number.isSafeInteger(storeId)).toBe(true)
+    const mysql=spawn('docker',['exec','-i','sellerpilot-java-mysql-1','sh','-lc',
+      'MYSQL_PWD="$MYSQL_PASSWORD" mysql -u"$MYSQL_USER" --batch --skip-column-names --unbuffered sellerpilot_java_test'])
+    const lines=createInterface({input:mysql.stdout})[Symbol.asyncIterator]()
+    mysql.stderr.pipe(process.stderr)
+    const refresh=page.getByRole('button',{name:'刷新任务状态',exact:true})
+    try{
+      mysql.stdin.write(`START TRANSACTION; UPDATE stores SET data_version=data_version+1 WHERE id=${storeId}; SELECT ROW_COUNT();\n`)
+      expect((await lines.next()).value).toBe('1')
+      await submit.click()
+      await expect(page.getByText('报表任务 排队中',{exact:true})).toBeVisible()
+      mysql.stdin.write("COMMIT; SELECT 'committed';\n")
+      expect((await lines.next()).value).toBe('committed')
+      const regenerate=page.getByRole('button',{name:'按最新数据重新生成',exact:true})
+      await expect.poll(async()=>{
+        await refresh.click()
+        return regenerate.isVisible()
+      }).toBe(true)
+      await regenerate.click()
+    } finally {
+      mysql.stdin.end()
+    }
+  } else {
+    await submit.click()
+  }
   await expect(page.getByText('报表任务 排队中',{exact:true})).toBeVisible()
   for(let attempt=0;attempt<30;attempt++){
     await page.getByRole('button',{name:'刷新任务状态',exact:true}).click()
