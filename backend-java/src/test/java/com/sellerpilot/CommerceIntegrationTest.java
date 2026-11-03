@@ -142,7 +142,8 @@ class CommerceIntegrationTest {
     @Test
     @EnabledIfEnvironmentVariable(named="JAVA_MARGIN_LOAD",matches="true")
     void savedMarginReportLoadAtFixedArrivalRate() throws Exception {
-        for (int size : List.of(100,9500)) {
+        boolean sustained = "true".equals(System.getenv("JAVA_MARGIN_SUSTAINED"));
+        for (int size : sustained ? List.of(9500) : List.of(100,9500)) {
             String key = "load-"+size;
             var created = send("POST","/stores",Map.of("name",key,"platform","market-a","source_store_key",key),token);
             assertEquals(201,created.status,created.body.toString());
@@ -169,6 +170,15 @@ class CommerceIntegrationTest {
             var second = send("GET","/api/v2/margin-reports/"+report.body.get("id")+"/details?page=1",null,token);
             assertEquals(200,second.status,second.body.toString());
             assertEquals(all.subList(50,100),second.body.get("rows"));
+            if (sustained) {
+                try (var pool = Executors.newFixedThreadPool(2)) {
+                    var summary = pool.submit(() -> { measureSavedReport(report,size,"read",1500); return null; });
+                    var details = pool.submit(() -> { measureSavedReport(report,size,"details",1500); return null; });
+                    summary.get(330,TimeUnit.SECONDS);
+                    details.get(330,TimeUnit.SECONDS);
+                }
+                continue;
+            }
             String reportId = report.body.get("id").toString();
             String savedSummary = db.queryForObject("SELECT summary_json FROM margin_reports WHERE id=?",String.class,reportId);
             assertNotNull(savedSummary);
@@ -190,8 +200,13 @@ class CommerceIntegrationTest {
     }
 
     private void measureSavedReport(Reply report, int size, String mode) throws Exception {
+        measureSavedReport(report,size,mode,15);
+    }
+
+    private void measureSavedReport(Reply report, int size, String mode, int requests) throws Exception {
         String path = "/api/v2/margin-reports/"+report.body.get("id");
-        if (!mode.equals("full")) path += "/summary";
+        if (mode.equals("details")) path += "/details?page=100";
+        else if (!mode.equals("full")) path += "/summary";
         var request = HttpRequest.newBuilder(URI.create("http://127.0.0.1:"+port+path))
             .header("Authorization","Bearer "+token).timeout(java.time.Duration.ofSeconds(15)).GET().build();
         var warm = http.send(request,HttpResponse.BodyHandlers.ofByteArray());
@@ -215,9 +230,15 @@ class CommerceIntegrationTest {
                 return TimeUnit.NANOSECONDS.toMillis(System.nanoTime()-start);
             }) : null;
             List<Future<Long>> reads = new ArrayList<>();
-            for (int i=0; i<15; i++) {
+            int dropped = 0;
+            var workers = (ThreadPoolExecutor) readers;
+            for (int i=0; i<requests; i++) {
                 long due = start+TimeUnit.MILLISECONDS.toNanos(i*200L);
                 TimeUnit.NANOSECONDS.sleep(Math.max(0,due-System.nanoTime()));
+                if (workers.getQueue().size() >= 4) {
+                    dropped++;
+                    continue;
+                }
                 reads.add(readers.submit(() -> {
                     var response = http.send(request,HttpResponse.BodyHandlers.ofByteArray());
                     assertEquals(200,response.statusCode());
@@ -233,6 +254,7 @@ class CommerceIntegrationTest {
             double meanAcquire = (acquire.totalTime(TimeUnit.MILLISECONDS)-time)/Math.max(1,acquire.count()-count);
             System.out.printf(Locale.ROOT,"saved_margin size=%d mode=%s ok=%d p95_ms=%d bytes=%d acquire_mean_ms=%.3f import_ms=%s revalue_ms=%s%n",
                 size,mode,times.size(),times.get((int)Math.ceil(times.size()*0.95)-1),warm.body().length,meanAcquire,imported,revalued);
+            assertEquals(0,dropped,"发压端等待队列溢出");
         }
     }
 
