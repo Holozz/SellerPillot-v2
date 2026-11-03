@@ -164,7 +164,12 @@ class CommerceIntegrationTest {
             assertEquals(200,fx.status,fx.body.toString());
             var report = generateMargin(Map.of("store_ids",List.of(store),"fx_rate_set_id",fx.body.get("id"),
                 "start","2026-11-01","end","2026-11-02"));
-            for (String mode : List.of("read","import","revalue","mixed")) {
+            var all = (List<?>)((Map<?,?>)report.body.get("result")).get("details");
+            assertEquals(size,all.size());
+            var second = send("GET","/api/v2/margin-reports/"+report.body.get("id")+"/details?page=1",null,token);
+            assertEquals(200,second.status,second.body.toString());
+            assertEquals(all.subList(50,100),second.body.get("rows"));
+            for (String mode : List.of("full","read","import","revalue","mixed")) {
                 if (mode.equals("revalue") || mode.equals("mixed")) {
                     assertEquals(200,sourceCsv(store,"procurement-batches",batch.formatted(mode.equals("mixed")?"6.00":"5.00"),true).status);
                 }
@@ -175,6 +180,7 @@ class CommerceIntegrationTest {
 
     private void measureSavedReport(Reply report, int size, String mode) throws Exception {
         String path = "/api/v2/margin-reports/"+report.body.get("id");
+        if (!mode.equals("full")) path += "/summary";
         var request = HttpRequest.newBuilder(URI.create("http://127.0.0.1:"+port+path))
             .header("Authorization","Bearer "+token).timeout(java.time.Duration.ofSeconds(15)).GET().build();
         var warm = http.send(request,HttpResponse.BodyHandlers.ofByteArray());
@@ -238,6 +244,15 @@ class CommerceIntegrationTest {
         long fx=((Number)send("POST","/api/v2/stores/"+store+"/fx-rate-sets",Map.of("source","fixture","source_revision","multi","rates",List.of(Map.of("base_currency","USD","effective_date","2026-11-01","rate","7.00"))),token).body.get("id")).longValue();
         Map<String,Object> query=Map.of("store_ids",List.of(store),"fx_rate_set_id",fx,"start","2026-11-01","end","2026-11-02");
         Reply report=generateMargin(query);assertEquals(200,report.status,report.body.toString());Map<String,Object> result=(Map<String,Object>)report.body.get("result");assertEquals("30.00",result.get("sales_net_cny"));assertEquals("16.00",result.get("procurement_cost_cny"));assertEquals("14.00",result.get("gross_margin_cny"));
+        String reportPath = "/api/v2/margin-reports/"+report.body.get("id");
+        var summary = send("GET",reportPath+"/summary",null,token);
+        assertEquals(200,summary.status,summary.body.toString());
+        var summaryResult = (Map<?,?>)summary.body.get("result");
+        assertEquals("14.00",summaryResult.get("gross_margin_cny"));
+        assertFalse(summaryResult.containsKey("details"));
+        assertFalse(((Map<?,?>)summary.body.get("input_manifest")).containsKey("sales"));
+        assertEquals(result.get("details"),send("GET",reportPath+"/details?page=0",null,token).body.get("rows"));
+        assertEquals(List.of(),send("GET",reportPath+"/details?page=1",null,token).body.get("rows"));
         String refundHeader="platform_code,store_key,external_refund_id,external_line_id,confirmed_at,refund_amount,currency,returned_quantity,restocked";
         String refund="market-a,multi,MR-1,M-LINE,2026-11-02T00:00:00Z,10.00,CNY,1,true";
         assertEquals(422,sourceCsv(store,"refunds",refundHeader+"\n"+refund+"\n").status);
@@ -462,6 +477,8 @@ class CommerceIntegrationTest {
         assertTrue(send("GET","/api/v2/margin-reports?store_id="+sourceSid,null,viewer).rows.stream().anyMatch(row->((Map<?,?>)row).get("id").equals(report.body.get("id"))));
         send("PUT","/api/v2/stores/"+marketBSid+"/members",Map.of("username","margin-viewer","role","viewer","active",false),token);
         assertEquals(404,send("GET","/api/v2/margin-reports/"+report.body.get("id"),null,viewer).status);
+        assertEquals(404,send("GET","/api/v2/margin-reports/"+report.body.get("id")+"/summary",null,viewer).status);
+        assertEquals(404,send("GET","/api/v2/margin-reports/"+report.body.get("id")+"/details",null,viewer).status);
         assertEquals(404,send("POST","/api/v2/margin-reports/"+report.body.get("id")+"/recompute",null,viewer).status);
         assertEquals(404,send("POST","/api/v2/margin-reports/compare",Map.of("baseline_id",report.body.get("id"),"target_id",correctedReport.body.get("id")),viewer).status);
         assertFalse(send("GET","/api/v2/margin-reports?store_id="+sourceSid,null,viewer).rows.stream().anyMatch(row->((Map<?,?>)row).get("id").equals(report.body.get("id"))));

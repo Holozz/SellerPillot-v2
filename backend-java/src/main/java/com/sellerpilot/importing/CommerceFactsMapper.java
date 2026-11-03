@@ -24,7 +24,22 @@ public interface CommerceFactsMapper {
     List<Map<String,Object>> latestRefunds(@Param("sid")long sid,@Param("ids")List<String> ids);
     @Select("SELECT * FROM store_product_mapping_revisions WHERE store_id=#{sid} AND source_sku=#{sku} ORDER BY mapping_version DESC LIMIT 1")
     Map<String,Object> latestMapping(@Param("sid")long sid,@Param("sku")String sku);
-    @Select("<script>SELECT b.source_batch_id,COALESCE(SUM(a.quantity),0) AS allocated_quantity FROM procurement_batch_allocations a JOIN procurement_batch_revisions b ON b.id=a.procurement_batch_id AND b.store_id=a.store_id JOIN sales_line_revisions l ON l.store_id=a.store_id AND l.source_row_id=a.source_row_id WHERE b.store_id=#{sid} AND b.source_batch_id IN <foreach collection='batches' item='batch' open='(' separator=',' close=')'>#{batch}</foreach> AND l.revision=(SELECT MAX(l2.revision) FROM sales_line_revisions l2 WHERE l2.store_id=l.store_id AND l2.external_line_id=l.external_line_id) GROUP BY b.source_batch_id</script>")
+    @Select("""
+        <script>
+        WITH latest_lines AS (
+            SELECT external_line_id, MAX(revision) AS revision
+            FROM sales_line_revisions WHERE store_id=#{sid} GROUP BY external_line_id
+        )
+        SELECT b.source_batch_id,SUM(a.quantity) AS allocated_quantity
+        FROM latest_lines ll
+        STRAIGHT_JOIN sales_line_revisions l ON l.store_id=#{sid} AND l.external_line_id=ll.external_line_id AND l.revision=ll.revision
+        STRAIGHT_JOIN procurement_batch_allocations a ON a.store_id=l.store_id AND a.source_row_id=l.source_row_id
+        STRAIGHT_JOIN procurement_batch_revisions b ON b.id=a.procurement_batch_id AND b.store_id=a.store_id
+        WHERE b.source_batch_id IN
+        <foreach collection='batches' item='batch' open='(' separator=',' close=')'>#{batch}</foreach>
+        GROUP BY b.source_batch_id
+        </script>
+        """)
     List<Map<String,Object>> allocatedForBatches(@Param("sid")long sid,@Param("batches")List<String> batches);
     @Select("SELECT l.* FROM sales_line_revisions l WHERE l.store_id=#{sid} AND l.external_line_id=#{line} ORDER BY l.revision DESC LIMIT 1")
     Map<String,Object> latestLine(@Param("sid")long sid,@Param("line")String line);

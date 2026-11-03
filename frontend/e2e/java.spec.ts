@@ -23,8 +23,9 @@ test('毛利报表界面：跨店选择、缺汇率提示和历史复算',async(
     else if(p.endsWith('/recompute')){recomputed++;body=result}
     else if(p.endsWith('/revalue-costs')){revaluations++;body={id:'job-2',status:'QUEUED',source_report_id:'report-1'}}
     else if(p.endsWith('/job-2'))body={id:'job-2',status:'SUCCEEDED',report_id:'report-2',source_report_id:'report-1'}
-    else if(p.endsWith('/report-2'))body={...saved,id:'report-2',input_manifest:{...saved.input_manifest,revalued_from:'report-1'}}
-    else if(p.endsWith('/report-1'))body=saved
+    else if(p.endsWith('/details'))body={rows:result.details}
+    else if(p.endsWith('/report-2/summary'))body={...saved,id:'report-2',input_manifest:{...saved.input_manifest,revalued_from:'report-1'}}
+    else if(p.endsWith('/report-1/summary'))body=saved
     await route.fulfill({json:body})
   })
   await page.goto('http://sellerpilot.test/')
@@ -39,6 +40,8 @@ test('毛利报表界面：跨店选择、缺汇率提示和历史复算',async(
   await expect(page.getByText('报表任务 排队中',{exact:true})).toBeVisible()
   await page.getByRole('button',{name:'刷新任务状态'}).click()
   await expect(page.getByText('汇率不完整，已定价毛利小计：70.80 元；完整销售毛利暂不可用。',{exact:true})).toBeVisible()
+  await expect(page.getByRole('cell',{name:'未定价',exact:true})).toHaveCount(0)
+  await page.getByRole('button',{name:'加载折算明细'}).click()
   await expect(page.getByRole('cell',{name:'未定价',exact:true})).toBeVisible()
   await page.getByText('B-1 · 来源行 #9 · 采购批次分配（2 笔）',{exact:true}).click()
   await expect(page.getByRole('cell',{name:'LOT-B / 2',exact:true})).toBeVisible()

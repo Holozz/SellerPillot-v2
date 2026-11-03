@@ -22,6 +22,7 @@ export default function MarginReports({ store, stores, onSessionExpired }: { sto
   const [start, setStart] = useState(new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10)), [end, setEnd] = useState(new Date().toISOString().slice(0, 10))
   const [source, setSource] = useState(''), [revision, setRevision] = useState(''), [rateText, setRateText] = useState('')
   const [busy, setBusy] = useState(false), [error, setError] = useState(''), [notice, setNotice] = useState(''), [detailPage, setDetailPage] = useState(0)
+  const [details, setDetails] = useState<Detail[] | null>(null)
   const pending = useRef<AbortController | null>(null)
   const [fixed, setFixed] = useState(false), [fixedDate, setFixedDate] = useState('')
   const [baseline, setBaseline] = useState(''), [target, setTarget] = useState(''), [comparison, setComparison] = useState<Comparison | null>(null)
@@ -40,8 +41,12 @@ export default function MarginReports({ store, stores, onSessionExpired }: { sto
   }
   useEffect(() => { void run(refresh); return () => { pending.current?.abort(); pending.current = null } }, [store.id])
   async function open(id: string, signal: AbortSignal) {
-    setReport(null); setDetailPage(0)
-    const saved = await request<Report>(`/v2/margin-reports/${id}`, { signal }); if (!signal.aborted) setReport(saved)
+    setReport(null); setDetailPage(0); setDetails(null)
+    const saved = await request<Report>(`/v2/margin-reports/${id}/summary`, { signal }); if (!signal.aborted) setReport(saved)
+  }
+  async function openDetails(id: string, page: number, signal: AbortSignal) {
+    const value = await request<{ rows: Detail[] }>(`/v2/margin-reports/${id}/details?page=${page}`, { signal })
+    if (!signal.aborted) { setDetails(value.rows); setDetailPage(page) }
   }
   async function showJob(next: MarginJob, signal: AbortSignal) {
     if (signal.aborted) return
@@ -128,12 +133,14 @@ export default function MarginReports({ store, stores, onSessionExpired }: { sto
         })
       }}>按最新采购成本生成新报表</button>
       <h4>统一商品毛利排序（展示前 50 项）</h4><div className="java-table-scroll"><table><thead><tr><th>统一 SKU</th><th>已定价毛利（元）</th></tr></thead><tbody>{report.result.products.slice(0, 50).map(product => <tr key={product.internal_sku}><td>{product.internal_sku}</td><td>{product.known_margin_cny}</td></tr>)}</tbody></table></div>
-      <h4>折算明细（第 {detailPage + 1} 页）</h4><div className="java-table-scroll"><table><thead><tr><th>店铺 / 来源行</th><th>业务明细</th><th>事件</th><th>原币收入/退款</th><th>原币采购成本</th><th>收入/退款汇率日期及汇率</th><th>采购汇率日期及汇率</th><th>状态 / 毛利影响（未舍入）</th></tr></thead><tbody>{report.result.details.slice(detailPage * 50, (detailPage + 1) * 50).map((detail, index) => <tr key={index}><td>{detail.store_id} / #{detail.source_row_id}</td><td>{detail.external_line_id}</td><td>{detail.event === 'sales' ? '销售' : '退款/退货'}</td><td>{detail.original_amount} {detail.currency}</td><td>{detail.original_purchase_cost} {detail.cost_currency}</td><td>{detail.revenue_rate_date} / {detail.revenue_rate ?? '缺失'}</td><td>{detail.cost_rate_date === 'MULTIPLE' ? '按下方批次分配明细折算' : `${detail.cost_rate_date} / ${detail.cost_rate ?? '缺失'}`}</td><td>{detail.complete ? detail.margin_cny_unrounded : '未定价'}</td></tr>)}</tbody></table></div>
-      {report.result.details.slice(detailPage * 50, (detailPage + 1) * 50).filter(detail => detail.cost_allocations?.length).map(detail => <details key={`${detail.event}:${detail.source_row_id}`}>
+      {details === null ? <button className="quiet-button" disabled={busy || report.result.event_count === 0} onClick={() => void run(signal => openDetails(report.id, 0, signal))}>加载折算明细</button> : <>
+      <h4>折算明细（第 {detailPage + 1} 页）</h4><div className="java-table-scroll"><table><thead><tr><th>店铺 / 来源行</th><th>业务明细</th><th>事件</th><th>原币收入/退款</th><th>原币采购成本</th><th>收入/退款汇率日期及汇率</th><th>采购汇率日期及汇率</th><th>状态 / 毛利影响（未舍入）</th></tr></thead><tbody>{details.map((detail, index) => <tr key={index}><td>{detail.store_id} / #{detail.source_row_id}</td><td>{detail.external_line_id}</td><td>{detail.event === 'sales' ? '销售' : '退款/退货'}</td><td>{detail.original_amount} {detail.currency}</td><td>{detail.original_purchase_cost} {detail.cost_currency}</td><td>{detail.revenue_rate_date} / {detail.revenue_rate ?? '缺失'}</td><td>{detail.cost_rate_date === 'MULTIPLE' ? '按下方批次分配明细折算' : `${detail.cost_rate_date} / ${detail.cost_rate ?? '缺失'}`}</td><td>{detail.complete ? detail.margin_cny_unrounded : '未定价'}</td></tr>)}</tbody></table></div>
+      {details.filter(detail => detail.cost_allocations?.length).map(detail => <details key={`${detail.event}:${detail.source_row_id}`}>
         <summary>{detail.external_line_id} · 来源行 #{detail.source_row_id} · 采购批次分配（{detail.cost_allocations!.length} 笔）</summary>
         <div className="java-table-scroll"><table><thead><tr><th>采购批次 / 修订</th><th>数量</th><th>单位采购成本</th><th>成本汇率日期 / 汇率</th><th>成本人民币（未舍入）</th></tr></thead><tbody>{detail.cost_allocations!.map(part => <tr key={part.procurement_batch_id}><td>{part.source_batch_id ?? `#${part.procurement_batch_id}`} / {part.cost_batch_revision ?? '历史版本'}</td><td>{part.quantity}</td><td>{part.unit_purchase_cost} {part.cost_currency}</td><td>{part.rate_date} / {part.rate ?? '缺失'}</td><td>{part.cost_cny_unrounded ?? '未定价'}</td></tr>)}</tbody></table></div>
       </details>)}
-      <button className="quiet-button" disabled={detailPage === 0} onClick={() => setDetailPage(value => value - 1)}>上一页明细</button><button className="quiet-button" disabled={(detailPage + 1) * 50 >= report.result.details.length} onClick={() => setDetailPage(value => value + 1)}>下一页明细</button>
+      <button className="quiet-button" disabled={busy || detailPage === 0} onClick={() => void run(signal => openDetails(report.id, detailPage - 1, signal))}>上一页明细</button><button className="quiet-button" disabled={busy || (detailPage + 1) * 50 >= report.result.event_count} onClick={() => void run(signal => openDetails(report.id, detailPage + 1, signal))}>下一页明细</button>
+      </>}
     </section>}
   </section>
 }

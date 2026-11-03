@@ -33,6 +33,22 @@ public class MarginController {
     @GetMapping("/{id}") public Map<String,Object> get(@AuthenticationPrincipal Long user,@PathVariable String id){
         Map<String,Object> row=require(user,id);return Map.of("id",id,"input_manifest",json.readValue(String.valueOf(row.get("input_manifest")),Map.class),"result",json.readValue(String.valueOf(row.get("result")),Map.class));
     }
+    @GetMapping("/{id}/summary")
+    public Map<String,Object> summary(@AuthenticationPrincipal Long user,@PathVariable String id){
+        authorize(user, reports.stores(id));
+        var row = reports.summary(id);
+        Map<String,Object> result = json.readValue(row.get("result").toString(), Map.class);
+        result.put("products", row.get("products") == null ? List.of() : json.readValue(row.get("products").toString(), List.class));
+        return Map.of("id",id,"input_manifest",json.readValue(row.get("input_manifest").toString(),Map.class),"result",result);
+    }
+
+    @GetMapping("/{id}/details")
+    public Map<String,Object> details(@AuthenticationPrincipal Long user,@PathVariable String id,@RequestParam(defaultValue="0") int page){
+        if (page < 0 || page >= 200) throw new ApiException(422,"明细页码须为 0 至 199");
+        authorize(user, reports.stores(id));
+        String rows = reports.details(id,page*50,page*50+49);
+        return Map.of("page",page,"rows",rows == null ? List.of() : json.readValue(rows,List.class));
+    }
     @PostMapping("/{id}/recompute") public Map<String,Object> recompute(@AuthenticationPrincipal Long user,@PathVariable String id){
         Map<String,Object> row=require(user,id);return calculator.compute(json.readValue(String.valueOf(row.get("input_manifest")),Map.class));
     }
@@ -42,7 +58,14 @@ public class MarginController {
         return jobs.revalue(user,id);
     }
     private Map<String,Object> require(long user,String id){
-        Map<String,Object> row=reports.get(id);if(row==null)throw new ApiException(404,"报表不存在");
-        List<?> stores=json.readValue(String.valueOf(row.get("store_ids")),List.class);for(Object store:stores)access.require(user,((Number)store).longValue(),"read",false);return row;
+        Map<String,Object> row=reports.get(id);
+        authorize(user,row == null ? null : String.valueOf(row.get("store_ids")));
+        return row;
+    }
+
+    private void authorize(long user,String storeIds){
+        if(storeIds==null)throw new ApiException(404,"报表不存在");
+        List<?> stores=json.readValue(storeIds,List.class);
+        for(Object store:stores)access.require(user,((Number)store).longValue(),"read",false);
     }
 }
