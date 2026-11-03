@@ -171,11 +171,14 @@ class CommerceIntegrationTest {
             assertEquals(200,second.status,second.body.toString());
             assertEquals(all.subList(50,100),second.body.get("rows"));
             if (sustained) {
-                try (var pool = Executors.newFixedThreadPool(2)) {
+                try (var pool = Executors.newFixedThreadPool(3)) {
                     var summary = pool.submit(() -> { measureSavedReport(report,size,"read",1500); return null; });
                     var details = pool.submit(() -> { measureSavedReport(report,size,"details",1500); return null; });
+                    var writes = "true".equals(System.getenv("JAVA_MARGIN_MIXED"))
+                        ? pool.submit(() -> { sustainMarginWrites(store,batch,report,size); return null; }) : null;
                     summary.get(330,TimeUnit.SECONDS);
                     details.get(330,TimeUnit.SECONDS);
+                    if (writes != null) writes.get(15,TimeUnit.SECONDS);
                 }
                 continue;
             }
@@ -201,6 +204,40 @@ class CommerceIntegrationTest {
 
     private void measureSavedReport(Reply report, int size, String mode) throws Exception {
         measureSavedReport(report,size,mode,15);
+    }
+
+    private void sustainMarginWrites(long store, String batch, Reply report, int size) throws Exception {
+        String id = report.body.get("id").toString();
+        var published = new HashSet<String>();
+        long start = System.nanoTime();
+        for (int round = 0; round < 5; round++) {
+            long due = start+TimeUnit.SECONDS.toNanos(round*60L+5);
+            TimeUnit.NANOSECONDS.sleep(Math.max(0,due-System.nanoTime()));
+            StringBuilder orders = new StringBuilder("external_order_id,ordered_at,status,currency\n");
+            for (int i=0; i<500; i++) orders.append("sustained-").append(round).append('-').append(i)
+                .append(",2026-11-01T00:00:00Z,paid,USD\n");
+            assertEquals(200,sourceCsv(store,"procurement-batches",batch.formatted((5+round)+".00"),true).status);
+            String orderFile = orders.toString();
+            try (var importer = Executors.newSingleThreadExecutor()) {
+                long submitted = System.nanoTime();
+                var imported = importer.submit(() -> {
+                    assertEquals(200,csv("orders",orderFile).status);
+                    return TimeUnit.NANOSECONDS.toMillis(System.nanoTime()-submitted);
+                });
+                var job = send("POST","/api/v2/margin-reports/"+id+"/revalue-costs",null,token);
+                assertEquals(202,job.status,job.body.toString());
+                String next = job.body.get("id").toString();
+                var status = awaitMarginJob(next);
+                assertEquals("SUCCEEDED",status.body.get("status"),status.body.toString());
+                assertTrue(published.add(next),"预期每次成本修订生成独立报表");
+                var snapshot = send("GET","/api/v2/margin-reports/"+next+"/summary",null,token);
+                assertEquals(200,snapshot.status);
+                assertEquals(size*(5-round)+".00",((Map<?,?>)snapshot.body.get("result")).get("gross_margin_cny"));
+                long revalueMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime()-submitted);
+                System.out.printf("sustained_write round=%d import_ms=%d revalue_to_summary_ms=%d%n",
+                    round+1,imported.get(10,TimeUnit.SECONDS),revalueMs);
+            }
+        }
     }
 
     private void measureSavedReport(Reply report, int size, String mode, int requests) throws Exception {
