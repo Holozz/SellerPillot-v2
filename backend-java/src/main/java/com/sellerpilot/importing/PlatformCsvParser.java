@@ -13,6 +13,8 @@ import org.springframework.stereotype.Component;
 
 @Component
 public class PlatformCsvParser {
+    private final tools.jackson.databind.json.JsonMapper json;
+    public PlatformCsvParser(tools.jackson.databind.json.JsonMapper json){this.json=json;}
     public record Row(int number,String key,String hash,Map<String,String> raw,Map<String,Object> normalized){}
     public record Parsed(String kind,String platform,String storeKey,String hash,byte[] file,List<Row> rows){}
     private static final Map<String,Map<String,List<String>>> HEADERS=Map.of(
@@ -37,7 +39,10 @@ public class PlatformCsvParser {
         if(content.startsWith("\uFEFF"))content=content.substring(1);
         List<Row> rows=new ArrayList<>();Set<String> seen=new HashSet<>();
         try(CSVParser csv=CSVFormat.DEFAULT.builder().setHeader().setSkipHeaderRecord(true).setDuplicateHeaderMode(DuplicateHeaderMode.DISALLOW).get().parse(new StringReader(content))){
-            if(!csv.getHeaderNames().equals(platformHeaders.get(kind)))throw new ApiException(422,"CSV表头或字段顺序不正确");
+            List<String> extended=new ArrayList<>(platformHeaders.get(kind));
+            if(kind.equals("order-items"))extended.set(extended.size()-1,"batch_allocations");
+            if(kind.equals("refunds"))extended.add("return_allocations");
+            if(!csv.getHeaderNames().equals(platformHeaders.get(kind))&&!csv.getHeaderNames().equals(extended))throw new ApiException(422,"CSV表头或字段顺序不正确");
             String storeKey=null;int count=0;
             for(CSVRecord record:csv){
                 int number=(int)csv.getCurrentLineNumber();if(++count>10000)throw new ApiException(422,"每个文件最多10000条记录");
@@ -77,7 +82,8 @@ public class PlatformCsvParser {
                 if(discount.compareTo(quantity.multiply(unitPrice))>0)throw new ApiException(422,"明细折扣不能超过商品金额");
                 n.put("quantity",quantity);n.put("unit_price",unitPrice);n.put("discount_amount",discount);
                 n.put("currency",currency(r.get(platform.equals("market-a")?"currency":"price_currency")));
-                n.put("source_batch_id",required(r,platform.equals("market-a")?"source_batch_id":"purchase_lot",128));
+                List<Map<String,Object>> allocations=r.containsKey("batch_allocations")?allocations(r.get("batch_allocations"),quantity):List.of(Map.of("source_batch_id",required(r,platform.equals("market-a")?"source_batch_id":"purchase_lot",128),"quantity",quantity));
+                n.put("batch_allocations",allocations);n.put("source_batch_id",allocations.getFirst().get("source_batch_id"));
             }
             case "refunds"->{
                 n.put("external_refund_id",required(r,platform.equals("market-a")?"external_refund_id":"refund_id",128));
@@ -87,6 +93,7 @@ public class PlatformCsvParser {
                 n.put("currency",currency(r.get(platform.equals("market-a")?"currency":"refund_currency")));
                 n.put("returned_quantity",nonnegative(r.get(platform.equals("market-a")?"returned_quantity":"returned_units")));
                 String restocked=required(r,"restocked",5).toLowerCase(Locale.ROOT);if(!Set.of("true","false").contains(restocked))throw new ApiException(422,"restocked须为true或false");n.put("restocked",Boolean.valueOf(restocked));
+                if(r.containsKey("return_allocations"))n.put("return_allocations",allocations(r.get("return_allocations"),decimal(String.valueOf(n.get("returned_quantity")))));
             }
             case "procurement-batches"->{
                 n.put("source_batch_id",required(r,platform.equals("market-a")?"source_batch_id":"purchase_lot",128));
@@ -101,6 +108,14 @@ public class PlatformCsvParser {
         return n;
     }
     private static String key(String kind,Map<String,Object> n){return switch(kind){case "orders"->(String)n.get("external_order_id");case "order-items"->(String)n.get("external_line_id");case "refunds"->(String)n.get("external_refund_id");case "procurement-batches"->(String)n.get("source_batch_id");default->null;};}
+    private List<Map<String,Object>> allocations(String value,BigDecimal total){
+        try{
+            List<?> input=json.readValue(value,List.class);if(input.size()>100)throw new ApiException(422,"每行最多100个批次分配");
+            List<Map<String,Object>> out=new ArrayList<>();Set<String> seen=new HashSet<>();BigDecimal sum=BigDecimal.ZERO;
+            for(Object item:input){Map<?,?> a=(Map<?,?>)item;if(!a.keySet().equals(Set.of("source_batch_id","quantity")))throw new ApiException(422,"批次分配须仅含source_batch_id和quantity");String batch=String.valueOf(a.get("source_batch_id"));if(batch.isBlank()||batch.length()>128||!seen.add(batch))throw new ApiException(422,"批次编号为空、过长或重复");BigDecimal qty=positive(String.valueOf(a.get("quantity")));sum=sum.add(qty);out.add(Map.of("source_batch_id",batch,"quantity",qty));}
+            if(sum.compareTo(total)!=0)throw new ApiException(422,"批次分配数量之和必须等于销售或退货数量");return out;
+        }catch(ApiException e){throw e;}catch(Exception e){throw new ApiException(422,"批次分配须为JSON数组");}
+    }
     private static String required(Map<String,String> r,String field,int max){String value=r.getOrDefault(field,"").trim();if(value.isEmpty()||value.length()>max)throw new ApiException(422,"字段"+field+"不能为空且长度不能超过"+max);return value;}
     private static String currency(String value){String v=value==null?"":value.trim();if(!v.matches("[A-Z]{3}"))throw new ApiException(422,"币种须为三位大写代码");return v;}
     private static BigDecimal money(String value){try{BigDecimal n=new BigDecimal(value.trim());if(n.signum()<0||n.scale()>2||n.precision()-n.scale()>16)throw new NumberFormatException();return n;}catch(Exception e){throw new ApiException(422,"金额须为非负且最多两位小数");}}

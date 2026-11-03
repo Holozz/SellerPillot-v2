@@ -8,6 +8,12 @@ import org.apache.ibatis.annotations.*;
 
 @Mapper
 public interface CommerceFactsMapper {
+    @Select("<script>SELECT a.*,b.source_batch_id FROM procurement_batch_allocations a JOIN procurement_batch_revisions b ON b.id=a.procurement_batch_id WHERE a.store_id=#{sid} AND a.source_row_id IN <foreach collection='ids' item='id' open='(' separator=',' close=')'>#{id}</foreach></script>")
+    List<Map<String,Object>> allocations(@Param("sid")long sid,@Param("ids")List<Long> ids);
+    @Select("<script>SELECT a.*,b.source_batch_id,r.external_refund_id,l.external_line_id FROM refund_batch_allocations a JOIN procurement_batch_revisions b ON b.id=a.procurement_batch_id JOIN sales_refund_revisions r ON r.store_id=a.store_id AND r.source_row_id=a.source_row_id JOIN sales_line_revisions l ON l.id=r.sales_line_revision_id WHERE a.store_id=#{sid} AND l.external_line_id IN <foreach collection='ids' item='id' open='(' separator=',' close=')'>#{id}</foreach> AND r.revision=(SELECT MAX(r2.revision) FROM sales_refund_revisions r2 WHERE r2.store_id=r.store_id AND r2.external_refund_id=r.external_refund_id)</script>")
+    List<Map<String,Object>> currentReturns(@Param("sid")long sid,@Param("ids")List<String> ids);
+    @Insert("INSERT INTO refund_batch_allocations(store_id,source_row_id,procurement_batch_id,quantity) VALUES(#{sid},#{row},#{batch},#{qty})")
+    void returnAllocation(@Param("sid")long sid,@Param("row")long row,@Param("batch")long batch,@Param("qty")BigDecimal qty);
     @Select("<script>SELECT o.* FROM sales_order_revisions o JOIN (SELECT external_order_id,MAX(revision) revision FROM sales_order_revisions WHERE store_id=#{sid} AND external_order_id IN <foreach collection='ids' item='id' open='(' separator=',' close=')'>#{id}</foreach> GROUP BY external_order_id) x ON x.external_order_id=o.external_order_id AND x.revision=o.revision WHERE o.store_id=#{sid}</script>")
     List<Map<String,Object>> latestOrders(@Param("sid")long sid,@Param("ids")List<String> ids);
     @Select("<script>SELECT l.* FROM sales_line_revisions l JOIN (SELECT external_line_id,MAX(revision) revision FROM sales_line_revisions WHERE store_id=#{sid} AND external_line_id IN <foreach collection='ids' item='id' open='(' separator=',' close=')'>#{id}</foreach> GROUP BY external_line_id) x ON x.external_line_id=l.external_line_id AND x.revision=l.revision WHERE l.store_id=#{sid}</script>")

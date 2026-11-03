@@ -41,7 +41,7 @@ class CommerceIntegrationTest {
         return new Reply(response.statusCode(),json.readValue(response.body(),Map.class),List.of());
     }
     @BeforeEach void fixtures()throws Exception{
-        for(String table:List.of("margin_reports","sales_refund_revisions","sales_line_revisions","sales_order_revisions","procurement_batch_allocations","procurement_batch_revisions","store_product_mapping_revisions","catalog_products","source_import_rows","source_import_batches","fx_rates","fx_rate_sets","audit_logs","action_executions","action_proposals","import_batches","order_items","orders","products","store_memberships","stores","users"))db.update("DELETE FROM "+table);
+        for(String table:List.of("margin_reports","refund_batch_allocations","sales_refund_revisions","sales_line_revisions","sales_order_revisions","procurement_batch_allocations","procurement_batch_revisions","store_product_mapping_revisions","catalog_products","source_import_rows","source_import_batches","fx_rates","fx_rate_sets","audit_logs","action_executions","action_proposals","import_batches","order_items","orders","products","store_memberships","stores","users"))db.update("DELETE FROM "+table);
         assertEquals(201,send("POST","/auth/register",Map.of("username","owner","password","Password123!"),null).status);
         token=(String)send("POST","/auth/login",Map.of("username","owner","password","Password123!"),null).body.get("access_token");
         Reply store=send("POST","/stores",Map.of("name","Fixture","platform","amazon"),token);assertEquals(201,store.status,store.body.toString());
@@ -61,6 +61,38 @@ class CommerceIntegrationTest {
         assertEquals(409,send("POST","/api/v2/stores/"+sid+"/fx-rate-sets",body,token).status);
         assertEquals(422,send("POST","/api/v2/stores/"+sid+"/fx-rate-sets",Map.of("source","manual-provider","source_revision","v2","rates",List.of(rate,rate)),token).status);
         assertEquals(1,db.queryForObject("SELECT COUNT(*) FROM fx_rate_sets",Integer.class));
+    }
+    String cell(Object value){return "\""+json.writeValueAsString(value).replace("\"","\"\"")+"\"";}
+    @Test void multiBatchSalesReturnsAndCostRevaluationConserveAmounts()throws Exception{
+        long store=((Number)send("POST","/stores",Map.of("name","Multi","platform","market-a","source_store_key","multi"),token).body.get("id")).longValue();
+        assertEquals(201,send("POST","/api/v2/stores/"+store+"/catalog-products",Map.of("internal_sku","MULTI","title","Multi","base_unit","piece"),token).status);
+        assertEquals(200,send("PUT","/api/v2/stores/"+store+"/product-mappings/M-SKU",Map.of("internal_sku","MULTI"),token).status);
+        assertEquals(200,sourceCsv(store,"orders","platform_code,store_key,external_order_id,ordered_at,paid_at,status,currency\nmarket-a,multi,M-1,2026-11-01T00:00:00Z,2026-11-01T00:00:00Z,paid,CNY\n").status);
+        String batchHeader="platform_code,store_key,source_batch_id,external_sku,received_at,quantity,unit_purchase_cost,currency\n";
+        String batchA="market-a,multi,LOT-A,M-SKU,2026-10-31T00:00:00Z,2,4.00,CNY\n",batchB="market-a,multi,LOT-B,M-SKU,2026-10-31T00:00:00Z,4,6.00,CNY\n";
+        assertEquals(200,sourceCsv(store,"procurement-batches",batchHeader+batchA+batchB).status);
+        String header="platform_code,store_key,external_line_id,external_order_id,external_sku,quantity,unit_price,discount_amount,currency,batch_allocations\n";
+        List<Map<String,Object>> allocations=List.of(Map.of("source_batch_id","LOT-A","quantity",1),Map.of("source_batch_id","LOT-B","quantity",2));
+        String line=header+"market-a,multi,M-LINE,M-1,M-SKU,3,10.00,0.00,CNY,"+cell(allocations)+"\n";
+        assertEquals(422,sourceCsv(store,"order-items",line.replace(",3,10.00,",",4,10.00,")).status);
+        Reply uploaded=sourceCsv(store,"order-items",line);assertEquals(200,uploaded.status,uploaded.body.toString());assertEquals(true,sourceCsv(store,"order-items",line).body.get("duplicate"));
+        assertEquals(2,db.queryForObject("SELECT COUNT(*) FROM procurement_batch_allocations WHERE store_id=?",Integer.class,store));
+        String over=header+"market-a,multi,M-NEW,M-1,M-SKU,1,10.00,0.00,CNY,"+cell(List.of(Map.of("source_batch_id","LOT-A","quantity",1)))+"\n"+"market-a,multi,M-OVER,M-1,M-SKU,5,10.00,0.00,CNY,"+cell(List.of(Map.of("source_batch_id","LOT-B","quantity",5)))+"\n";
+        assertEquals(409,sourceCsv(store,"order-items",over).status);assertEquals(1,db.queryForObject("SELECT COUNT(*) FROM sales_line_revisions WHERE store_id=?",Integer.class,store));
+        long fx=((Number)send("POST","/api/v2/stores/"+store+"/fx-rate-sets",Map.of("source","fixture","source_revision","multi","rates",List.of(Map.of("base_currency","USD","effective_date","2026-11-01","rate","7.00"))),token).body.get("id")).longValue();
+        Map<String,Object> query=Map.of("store_ids",List.of(store),"fx_rate_set_id",fx,"start","2026-11-01","end","2026-11-02");
+        Reply report=send("POST","/api/v2/margin-reports",query,token);assertEquals(200,report.status,report.body.toString());Map<String,Object> result=(Map<String,Object>)report.body.get("result");assertEquals("30.00",result.get("sales_net_cny"));assertEquals("16.00",result.get("procurement_cost_cny"));assertEquals("14.00",result.get("gross_margin_cny"));
+        String refundHeader="platform_code,store_key,external_refund_id,external_line_id,confirmed_at,refund_amount,currency,returned_quantity,restocked";
+        String refund="market-a,multi,MR-1,M-LINE,2026-11-02T00:00:00Z,10.00,CNY,1,true";
+        assertEquals(422,sourceCsv(store,"refunds",refundHeader+"\n"+refund+"\n").status);
+        String returns=refundHeader+",return_allocations\n"+refund+","+cell(List.of(Map.of("source_batch_id","LOT-B","quantity",1)))+"\n";
+        assertEquals(200,sourceCsv(store,"refunds",returns).status);
+        String excess=refundHeader+",return_allocations\n"+refund.replace("MR-1","MR-2").replace(",1,true",",2,true")+","+cell(List.of(Map.of("source_batch_id","LOT-B","quantity",2)))+"\n";
+        assertEquals(409,sourceCsv(store,"refunds",excess).status);
+        Reply returned=send("POST","/api/v2/margin-reports",Map.of("store_ids",List.of(store),"fx_rate_set_id",fx,"start","2026-11-02","end","2026-11-03"),token);assertEquals("-4.00",((Map<String,Object>)returned.body.get("result")).get("gross_margin_cny"));
+        assertEquals(200,sourceCsv(store,"procurement-batches",batchHeader+batchB.replace(",6.00,CNY",",7.00,CNY"),true).status);
+        Reply revised=send("POST","/api/v2/margin-reports/"+report.body.get("id")+"/revalue-costs",null,token);assertEquals(200,revised.status,revised.body.toString());assertEquals("12.00",((Map<String,Object>)revised.body.get("result")).get("gross_margin_cny"));
+        assertEquals(result,send("POST","/api/v2/margin-reports/"+report.body.get("id")+"/recompute",null,token).body);
     }
     @Test void queryMatchesHandCalculationAndDoesNotCountJoinDuplicates()throws Exception{
         Reply sales=send("POST","/api/v2/stores/"+sid+"/metrics/query",query("sales"),token);
