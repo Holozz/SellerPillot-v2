@@ -5,8 +5,8 @@ import type { Store } from '../../shared/types'
 interface FxSet { id: number; source: string; source_revision: string }
 interface FxRate { base_currency: string; effective_date: string; rate: string }
 interface History { id: string; start_date: string; end_date: string; complete: boolean; known_margin_cny: string; created_at: string }
-interface MarginJob { id: string; status: 'QUEUED' | 'RUNNING' | 'SUCCEEDED' | 'FAILED' | 'INTERRUPTED'; report_id?: string; error?: string }
-const jobLabels = { QUEUED: '排队中', RUNNING: '计算中', SUCCEEDED: '已完成', FAILED: '失败', INTERRUPTED: '已中断' }
+interface MarginJob { id: string; status: 'QUEUED' | 'RUNNING' | 'SUCCEEDED' | 'FAILED' | 'INTERRUPTED' | 'STALE'; report_id?: string; error?: string; source_report_id?: string }
+const jobLabels = { QUEUED: '排队中', RUNNING: '计算中', SUCCEEDED: '已完成', FAILED: '失败', INTERRUPTED: '已中断', STALE: '数据版本已变化' }
 interface CostAllocation { source_batch_id?: string; procurement_batch_id: number; quantity: string | number; cost_batch_revision?: number; cost_currency: string; unit_purchase_cost: string; rate_date: string; rate: string | null; cost_cny_unrounded?: string }
 interface Detail { store_id: number; external_line_id: string; event: string; original_amount: string; currency: string; original_purchase_cost: string; cost_currency: string; revenue_rate_date: string; revenue_rate: string | null; cost_rate_date: string; cost_rate: string | null; margin_cny_unrounded?: string; complete: boolean; source_row_id: number; procurement_batch_id: number; cost_allocations?: CostAllocation[] }
 interface Result { complete: boolean; event_count: number; priced_event_count: number; sales_net_cny: string; refunds_cny: string; procurement_cost_cny: string; returned_cost_cny: string; known_margin_cny: string; gross_margin_cny: string | null; details: Detail[]; products: { internal_sku: string; known_margin_cny: string }[] }
@@ -49,6 +49,9 @@ export default function MarginReports({ store, stores, onSessionExpired }: { sto
     if (next.report_id) {
       await refresh(signal)
       await open(next.report_id, signal)
+      if (!signal.aborted && next.source_report_id) {
+        setBaseline(next.source_report_id); setTarget(next.report_id); setComparison(null)
+      }
     }
   }
   return <section className="source-history">
@@ -89,6 +92,9 @@ export default function MarginReports({ store, stores, onSessionExpired }: { sto
       {(job.status === 'FAILED' || job.status === 'INTERRUPTED') && <button className="quiet-button" disabled={busy} onClick={() => void run(async signal => {
         await showJob(await request<MarginJob>(`/v2/margin-report-jobs/${job.id}/retry`, { method: 'POST', signal }), signal)
       })}>重试报表任务</button>}
+      {job.status === 'STALE' && <button className="quiet-button" disabled={busy} onClick={() => void run(async signal => {
+        await showJob(await request<MarginJob>(`/v2/margin-report-jobs/${job.id}/regenerate`, { method: 'POST', signal }), signal)
+      })}>按最新数据重新生成</button>}
     </div>}
     <p className="hint">日期区间左闭右开，最多 20 家店、366 天、10000 条销售/退款事件。当前只匹配业务日期当天汇率；缺失记录保留原币并不计入已定价小计。</p>
     {rates.length > 0 && <details><summary>查看当前所选汇率依据（{rates.length} 条）</summary><div className="java-table-scroll"><table><thead><tr><th>原币</th><th>有效日</th><th>1 单位原币折人民币</th></tr></thead><tbody>{rates.map(rate => <tr key={`${rate.base_currency}:${rate.effective_date}`}><td>{rate.base_currency}</td><td>{rate.effective_date}</td><td>{rate.rate}</td></tr>)}</tbody></table></div></details>}
@@ -117,11 +123,8 @@ export default function MarginReports({ store, stores, onSessionExpired }: { sto
       <button className="quiet-button" disabled={busy} onClick={() => {
         if (!window.confirm('确认按当前采购批次修订生成成本重估报表？销售、退款和汇率沿用此报表快照；旧报表及销售记录保持不变。仅店铺所有者可执行。')) return
         void run(async signal => {
-          const oldId = report.id
-          const created = await request<Report>(`/v2/margin-reports/${oldId}/revalue-costs`, { method: 'POST', signal })
-          if (signal.aborted) return
-          setReport(created); setBaseline(oldId); setTarget(created.id); setComparison(null); await refresh(signal); await open(created.id, signal)
-          if (!signal.aborted) setNotice('采购成本重估报表已保存，可点击“计算报表差额”核对成本影响。')
+          const created = await request<MarginJob>(`/v2/margin-reports/${report.id}/revalue-costs`, { method: 'POST', signal })
+          await showJob(created, signal)
         })
       }}>按最新采购成本生成新报表</button>
       <h4>统一商品毛利排序（展示前 50 项）</h4><div className="java-table-scroll"><table><thead><tr><th>统一 SKU</th><th>已定价毛利（元）</th></tr></thead><tbody>{report.result.products.slice(0, 50).map(product => <tr key={product.internal_sku}><td>{product.internal_sku}</td><td>{product.known_margin_cny}</td></tr>)}</tbody></table></div>

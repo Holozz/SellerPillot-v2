@@ -21,7 +21,8 @@ test('毛利报表界面：跨店选择、缺汇率提示和历史复算',async(
     else if(p==='/api/v2/margin-reports')body=created?(revaluations?['report-2','report-1']:['report-1']).map(id=>({id,start_date:'2026-11-01',end_date:'2026-11-03',complete:false,known_margin_cny:'70.80',created_at:'2026-11-02T12:00Z'})):[]
     else if(p.endsWith('/compare')){await route.fulfill({status:422,json:{detail:'报表存在未定价事件，不能分解完整毛利差额'}});return}
     else if(p.endsWith('/recompute')){recomputed++;body=result}
-    else if(p.endsWith('/revalue-costs')){revaluations++;body={id:'report-2',result}}
+    else if(p.endsWith('/revalue-costs')){revaluations++;body={id:'job-2',status:'QUEUED',source_report_id:'report-1'}}
+    else if(p.endsWith('/job-2'))body={id:'job-2',status:'SUCCEEDED',report_id:'report-2',source_report_id:'report-1'}
     else if(p.endsWith('/report-2'))body={...saved,id:'report-2',input_manifest:{...saved.input_manifest,revalued_from:'report-1'}}
     else if(p.endsWith('/report-1'))body=saved
     await route.fulfill({json:body})
@@ -60,6 +61,9 @@ test('毛利报表界面：跨店选择、缺汇率提示和历史复算',async(
   await page.getByRole('button',{name:'按最新采购成本生成新报表'}).click();expect(revaluations).toBe(0)
   page.once('dialog',dialog=>dialog.accept())
   await page.getByRole('button',{name:'按最新采购成本生成新报表'}).click()
+  await expect(page.getByText('报表任务 排队中',{exact:true})).toBeVisible()
+  await expect(page.getByRole('heading',{name:'报表 report-1',exact:true})).toBeVisible()
+  await page.getByRole('button',{name:'刷新任务状态'}).click()
   await expect(page.getByRole('heading',{name:'报表 report-2',exact:true})).toBeVisible()
   await expect(page.getByLabel('基准报表',{exact:true})).toHaveValue('report-1');await expect(page.getByLabel('目标报表',{exact:true})).toHaveValue('report-2')
   expect(revaluations).toBe(1)
