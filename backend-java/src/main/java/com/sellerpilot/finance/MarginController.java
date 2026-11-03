@@ -36,6 +36,8 @@ public class MarginController {
     @GetMapping("/{id}/summary")
     public Map<String,Object> summary(@AuthenticationPrincipal Long user,@PathVariable String id){
         authorize(user, reports.stores(id));
+        String saved = reports.savedSummary(id);
+        if (saved != null) return json.readValue(saved, Map.class);
         var row = reports.summary(id);
         Map<String,Object> result = json.readValue(row.get("result").toString(), Map.class);
         result.put("products", row.get("products") == null ? List.of() : json.readValue(row.get("products").toString(), List.class));

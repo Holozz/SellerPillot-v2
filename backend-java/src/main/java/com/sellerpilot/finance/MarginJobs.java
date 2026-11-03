@@ -132,6 +132,13 @@ class MarginJobs {
             var result = calculator.compute(manifest);
             String manifestJson = json.writeValueAsString(manifest);
             String resultJson = json.writeValueAsString(result);
+            var summaryManifest = new LinkedHashMap<>(manifest);
+            summaryManifest.keySet().removeAll(Set.of("sales","refunds","rates"));
+            var summaryResult = new LinkedHashMap<>(result);
+            summaryResult.keySet().removeAll(Set.of("details","unpriced_events"));
+            var products = (List<?>) result.get("products");
+            summaryResult.put("products",products.subList(0,Math.min(50,products.size())));
+            String summaryJson = json.writeValueAsString(Map.of("id",id,"input_manifest",summaryManifest,"result",summaryResult));
             String storesJson = json.writeValueAsString(query.store_ids());
             tx.executeWithoutResult(status -> {
                 for (long store : query.store_ids()) {
@@ -142,7 +149,7 @@ class MarginJobs {
                     }
                 }
                 if (jobs.finish(id, "SUCCEEDED", null) != 1) throw new IllegalStateException("任务状态已变化");
-                reports.save(id, ((Number) manifest.get("owner_id")).longValue(), storesJson, manifestJson, resultJson, user);
+                reports.save(id, ((Number) manifest.get("owner_id")).longValue(), storesJson, manifestJson, resultJson, summaryJson, user);
             });
         } catch (ApiException failure) {
             jobs.finish(id, "FAILED", String.valueOf(failure.detail));

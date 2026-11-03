@@ -37,11 +37,17 @@ public interface MarginMapper {
     List<Map<String,Object>> sales(@Param("sid")long sid,@Param("start")LocalDateTime start,@Param("end")LocalDateTime end);
     @Select("SELECT r.id AS refund_revision_id,r.external_refund_id,r.source_row_id,r.sales_line_revision_id,r.refund_amount,r.currency,r.returned_quantity,r.restocked,r.confirmed_at,r.store_id,l.external_line_id,p.internal_sku,b.id AS procurement_batch_id,b.unit_purchase_cost,b.currency AS cost_currency,b.received_at FROM sales_refund_revisions r JOIN sales_line_revisions l ON l.store_id=r.store_id AND l.id=r.sales_line_revision_id JOIN procurement_batch_revisions b ON b.id=l.procurement_batch_id JOIN store_product_mapping_revisions m ON m.store_id=l.store_id AND m.source_sku=l.source_sku AND m.mapping_version=l.mapping_version JOIN catalog_products p ON p.id=m.catalog_product_id WHERE r.store_id=#{sid} AND r.revision=(SELECT MAX(r2.revision) FROM sales_refund_revisions r2 WHERE r2.store_id=r.store_id AND r2.external_refund_id=r.external_refund_id) AND r.confirmed_at>=#{start} AND r.confirmed_at<#{end} ORDER BY r.id LIMIT 10001")
     List<Map<String,Object>> refunds(@Param("sid")long sid,@Param("start")LocalDateTime start,@Param("end")LocalDateTime end);
-    @Insert("INSERT INTO margin_reports(id,owner_id,store_ids,input_manifest,result,created_by) VALUES(#{id},#{owner},CAST(#{stores} AS JSON),CAST(#{manifest} AS JSON),CAST(#{result} AS JSON),#{user})")
-    void save(@Param("id")String id,@Param("owner")long owner,@Param("stores")String stores,@Param("manifest")String manifest,@Param("result")String result,@Param("user")long user);
+    @Insert("""
+        INSERT INTO margin_reports(id,owner_id,store_ids,input_manifest,result,summary_json,created_by)
+        VALUES(#{id},#{owner},CAST(#{stores} AS JSON),CAST(#{manifest} AS JSON),CAST(#{result} AS JSON),CAST(#{summary} AS JSON),#{user})
+        """)
+    void save(@Param("id")String id,@Param("owner")long owner,@Param("stores")String stores,@Param("manifest")String manifest,
+              @Param("result")String result,@Param("summary")String summary,@Param("user")long user);
     @Select("SELECT * FROM margin_reports WHERE id=#{id}")Map<String,Object> get(String id);
     @Select("SELECT store_ids FROM margin_reports WHERE id=#{id}")
     String stores(String id);
+    @Select("SELECT summary_json FROM margin_reports WHERE id=#{id}")
+    String savedSummary(String id);
 
     @Select("""
         SELECT JSON_REMOVE(input_manifest,'$.sales','$.refunds','$.rates') AS input_manifest,

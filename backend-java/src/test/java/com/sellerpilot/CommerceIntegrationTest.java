@@ -169,6 +169,17 @@ class CommerceIntegrationTest {
             var second = send("GET","/api/v2/margin-reports/"+report.body.get("id")+"/details?page=1",null,token);
             assertEquals(200,second.status,second.body.toString());
             assertEquals(all.subList(50,100),second.body.get("rows"));
+            String reportId = report.body.get("id").toString();
+            String savedSummary = db.queryForObject("SELECT summary_json FROM margin_reports WHERE id=?",String.class,reportId);
+            assertNotNull(savedSummary);
+            db.update("UPDATE margin_reports SET summary_json=NULL WHERE id=?",reportId);
+            try {
+                assertEquals(json.readValue(savedSummary,Map.class),
+                    send("GET","/api/v2/margin-reports/"+reportId+"/summary",null,token).body);
+                measureSavedReport(report,size,"legacy-summary");
+            } finally {
+                db.update("UPDATE margin_reports SET summary_json=? WHERE id=?",savedSummary,reportId);
+            }
             for (String mode : List.of("full","read","import","revalue","mixed")) {
                 if (mode.equals("revalue") || mode.equals("mixed")) {
                     assertEquals(200,sourceCsv(store,"procurement-batches",batch.formatted(mode.equals("mixed")?"6.00":"5.00"),true).status);
