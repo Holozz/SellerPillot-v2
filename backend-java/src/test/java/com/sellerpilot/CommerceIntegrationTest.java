@@ -266,9 +266,10 @@ class CommerceIntegrationTest {
                 continue;
             }
             if (sustained) {
+                int rate = "true".equals(System.getenv("JAVA_MARGIN_TARGET")) ? 100 : 5;
                 try (var pool = Executors.newFixedThreadPool(3)) {
-                    var summary = pool.submit(() -> { measureSavedReport(report,size,"read",1500); return null; });
-                    var details = pool.submit(() -> { measureSavedReport(report,size,"details",1500); return null; });
+                    var summary = pool.submit(() -> { measureSavedReport(report,size,"read",rate*300,rate); return null; });
+                    var details = pool.submit(() -> { measureSavedReport(report,size,"details",rate*300,rate); return null; });
                     var writes = "true".equals(System.getenv("JAVA_MARGIN_MIXED"))
                         ? pool.submit(() -> { sustainMarginWrites(store,batch,report,size); return null; }) : null;
                     summary.get(330,TimeUnit.SECONDS);
