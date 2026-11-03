@@ -25,6 +25,9 @@ class CommerceIntegrationTest {
         if(url==null||!url.matches("jdbc:mysql://[^/]+/sellerpilot_java_test(?:\\?.*)?"))throw new IllegalArgumentException("只允许独立 Java 测试库");
         registry.add("spring.datasource.url",()->url);
         registry.add("sellerpilot.cache.enabled",()->false);
+        if ("true".equals(System.getenv("JAVA_MARGIN_RECOVERY"))) {
+            registry.add("sellerpilot.margin.worker.enabled",()->false);
+        }
     }
     @Value("${local.server.port}")int port;
     @Autowired JdbcTemplate db;
@@ -81,6 +84,87 @@ class CommerceIntegrationTest {
         assertEquals(200,send("GET","/api/v2/margin-reports/"+id,null,token).status);
         assertEquals(1,db.queryForObject("SELECT COUNT(*) FROM margin_reports",Integer.class));
     }
+    @Test
+    @EnabledIfEnvironmentVariable(named="JAVA_MARGIN_RECOVERY",matches="true")
+    void killedMarginWorkerRecoversWithoutPartialOrDuplicatePublication() throws Exception {
+        var fx = send("POST","/api/v2/stores/"+sid+"/fx-rate-sets",Map.of(
+            "source","fixture","source_revision","recovery","rates",
+            List.of(Map.of("base_currency","USD","effective_date","2026-11-01","rate","7.00"))),token);
+        assertEquals(200,fx.status,fx.body.toString());
+        var baseline = Map.of("store_ids",List.of(sid),"fx_rate_set_id",fx.body.get("id"),
+            "start","2026-11-01","end","2026-11-02");
+        var next = new HashMap<>(baseline);
+        next.put("end","2026-11-03");
+        Process worker = startRecoveryWorker();
+        try {
+            String oldJob = submitRecoveryReport(baseline);
+            waitForRecoveryStatus(oldJob,"SUCCEEDED");
+            String oldPath = "/api/v2/margin-reports/"+oldJob+"/summary";
+            var oldSummary = send("GET",oldPath,null,token);
+            assertEquals(200,oldSummary.status);
+            String job;
+            try (var blocker = Objects.requireNonNull(db.getDataSource()).getConnection()) {
+                blocker.setAutoCommit(false);
+                try (var lock = blocker.prepareStatement("SELECT id FROM stores WHERE id=? FOR UPDATE")) {
+                    lock.setLong(1,sid);
+                    try (var row = lock.executeQuery()) { assertTrue(row.next()); }
+                }
+                job = submitRecoveryReport(next);
+                waitForRecoveryStatus(job,"RUNNING");
+                stopRecoveryWorker(worker);
+                blocker.rollback();
+            }
+            assertEquals(404,send("GET","/api/v2/margin-reports/"+job+"/summary",null,token).status);
+            assertEquals(oldSummary,send("GET",oldPath,null,token));
+            worker = startRecoveryWorker();
+            waitForRecoveryStatus(job,"INTERRUPTED");
+            assertEquals(0,db.queryForObject("SELECT COUNT(*) FROM margin_reports WHERE id=?",Integer.class,job));
+            String taskPath = "/api/v2/margin-report-jobs/"+job;
+            assertEquals(202,send("POST",taskPath+"/retry",null,token).status);
+            var complete = waitForRecoveryStatus(job,"SUCCEEDED");
+            assertEquals(2,complete.body.get("attempts"));
+            assertEquals(job,submitRecoveryReport(next));
+            assertEquals(job,send("GET",taskPath,null,token).body.get("report_id"));
+            assertEquals(200,send("GET","/api/v2/margin-reports/"+job+"/summary",null,token).status);
+            assertEquals(1,db.queryForObject("SELECT COUNT(*) FROM margin_reports WHERE id=?",Integer.class,job));
+            assertEquals(oldSummary,send("GET",oldPath,null,token));
+        } finally {
+            stopRecoveryWorker(worker);
+        }
+    }
+
+    private Process startRecoveryWorker() throws Exception {
+        String classpath = Objects.requireNonNull(System.getProperty("surefire.test.class.path"));
+        var command = new ProcessBuilder(Path.of(System.getProperty("java.home"),"bin","java").toString(),
+            "-cp",classpath,"com.sellerpilot.SellerPilotApplication","--server.port=0",
+            "--sellerpilot.margin.worker.enabled=true","--sellerpilot.cache.enabled=false");
+        command.environment().put("JAVA_MYSQL_URL",System.getenv("JAVA_IT_MYSQL_URL"));
+        return command.redirectErrorStream(true).redirectOutput(ProcessBuilder.Redirect.INHERIT).start();
+    }
+
+    private void stopRecoveryWorker(Process worker) throws Exception {
+        worker.destroyForcibly();
+        assertTrue(worker.waitFor(10,TimeUnit.SECONDS),"子进程未退出");
+    }
+
+    private String submitRecoveryReport(Map<String,Object> query) throws Exception {
+        var job = send("POST","/api/v2/margin-report-jobs",query,token);
+        assertEquals(202,job.status,job.body.toString());
+        return job.body.get("id").toString();
+    }
+
+    private Reply waitForRecoveryStatus(String job, String expected) throws Exception {
+        long deadline = System.nanoTime()+TimeUnit.SECONDS.toNanos(40);
+        Reply status;
+        do {
+            status = send("GET","/api/v2/margin-report-jobs/"+job,null,token);
+            if (expected.equals(status.body.get("status"))) return status;
+            Thread.sleep(100);
+        } while (System.nanoTime()<deadline);
+        fail("等待 "+expected+"，当前状态 "+status.body);
+        return status;
+    }
+
     Reply generateMargin(Map<String,Object> query) throws Exception {
         Reply job = send("POST","/api/v2/margin-reports",query,token);
         assertEquals(202,job.status,job.body.toString());
@@ -170,6 +254,17 @@ class CommerceIntegrationTest {
             var second = send("GET","/api/v2/margin-reports/"+report.body.get("id")+"/details?page=1",null,token);
             assertEquals(200,second.status,second.body.toString());
             assertEquals(all.subList(50,100),second.body.get("rows"));
+            if (sustained && "true".equals(System.getenv("JAVA_MARGIN_RAMP"))) {
+                for (int rate : List.of(25,50,100)) {
+                    try (var pool = Executors.newFixedThreadPool(2)) {
+                        var summary = pool.submit(() -> { measureSavedReport(report,size,"read",rate*15,rate); return null; });
+                        var details = pool.submit(() -> { measureSavedReport(report,size,"details",rate*15,rate); return null; });
+                        summary.get(45,TimeUnit.SECONDS);
+                        details.get(45,TimeUnit.SECONDS);
+                    }
+                }
+                continue;
+            }
             if (sustained) {
                 try (var pool = Executors.newFixedThreadPool(3)) {
                     var summary = pool.submit(() -> { measureSavedReport(report,size,"read",1500); return null; });
@@ -241,6 +336,10 @@ class CommerceIntegrationTest {
     }
 
     private void measureSavedReport(Reply report, int size, String mode, int requests) throws Exception {
+        measureSavedReport(report,size,mode,requests,5);
+    }
+
+    private void measureSavedReport(Reply report, int size, String mode, int requests, int rate) throws Exception {
         String path = "/api/v2/margin-reports/"+report.body.get("id");
         if (mode.equals("details")) path += "/details?page=100";
         else if (!mode.equals("full")) path += "/summary";
@@ -254,7 +353,8 @@ class CommerceIntegrationTest {
         StringBuilder orders = new StringBuilder("external_order_id,ordered_at,status,currency\n");
         for (int i=0; i<500; i++) orders.append("load-").append(size).append('-').append(mode).append('-').append(i)
             .append(",2026-11-01T00:00:00Z,paid,USD\n");
-        try (var readers = Executors.newFixedThreadPool(4); var background = Executors.newFixedThreadPool(2)) {
+        int parallelism = rate == 5 ? 4 : 16;
+        try (var readers = Executors.newFixedThreadPool(parallelism); var background = Executors.newFixedThreadPool(2)) {
             long start = System.nanoTime()+TimeUnit.MILLISECONDS.toNanos(100);
             var importRun = Set.of("import","mixed").contains(mode) ? background.submit(() -> {
                 TimeUnit.NANOSECONDS.sleep(Math.max(0,start-System.nanoTime()));
@@ -270,9 +370,9 @@ class CommerceIntegrationTest {
             int dropped = 0;
             var workers = (ThreadPoolExecutor) readers;
             for (int i=0; i<requests; i++) {
-                long due = start+TimeUnit.MILLISECONDS.toNanos(i*200L);
+                long due = start+TimeUnit.SECONDS.toNanos(i)/rate;
                 TimeUnit.NANOSECONDS.sleep(Math.max(0,due-System.nanoTime()));
-                if (workers.getQueue().size() >= 4) {
+                if (workers.getQueue().size() >= parallelism) {
                     dropped++;
                     continue;
                 }
@@ -289,8 +389,8 @@ class CommerceIntegrationTest {
             var imported = importRun == null ? null : importRun.get(20,TimeUnit.SECONDS);
             var revalued = revalueRun == null ? null : revalueRun.get(20,TimeUnit.SECONDS);
             double meanAcquire = (acquire.totalTime(TimeUnit.MILLISECONDS)-time)/Math.max(1,acquire.count()-count);
-            System.out.printf(Locale.ROOT,"saved_margin size=%d mode=%s ok=%d p95_ms=%d bytes=%d acquire_mean_ms=%.3f import_ms=%s revalue_ms=%s%n",
-                size,mode,times.size(),times.get((int)Math.ceil(times.size()*0.95)-1),warm.body().length,meanAcquire,imported,revalued);
+            System.out.printf(Locale.ROOT,"saved_margin size=%d mode=%s rate=%d ok=%d dropped=%d p95_ms=%d bytes=%d acquire_mean_ms=%.3f import_ms=%s revalue_ms=%s%n",
+                size,mode,rate,times.size(),dropped,times.get((int)Math.ceil(times.size()*0.95)-1),warm.body().length,meanAcquire,imported,revalued);
             assertEquals(0,dropped,"发压端等待队列溢出");
         }
     }
