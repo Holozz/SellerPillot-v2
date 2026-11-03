@@ -41,7 +41,7 @@ class CommerceIntegrationTest {
         return new Reply(response.statusCode(),json.readValue(response.body(),Map.class),List.of());
     }
     @BeforeEach void fixtures()throws Exception{
-        for(String table:List.of("margin_reports","refund_batch_allocations","sales_refund_revisions","sales_line_revisions","sales_order_revisions","procurement_batch_allocations","procurement_batch_revisions","store_product_mapping_revisions","catalog_products","source_import_rows","source_import_batches","fx_rates","fx_rate_sets","audit_logs","action_executions","action_proposals","import_batches","order_items","orders","products","store_memberships","stores","users"))db.update("DELETE FROM "+table);
+        for(String table:List.of("margin_report_jobs","margin_reports","refund_batch_allocations","sales_refund_revisions","sales_line_revisions","sales_order_revisions","procurement_batch_allocations","procurement_batch_revisions","store_product_mapping_revisions","catalog_products","source_import_rows","source_import_batches","fx_rates","fx_rate_sets","audit_logs","action_executions","action_proposals","import_batches","order_items","orders","products","store_memberships","stores","users"))db.update("DELETE FROM "+table);
         assertEquals(201,send("POST","/auth/register",Map.of("username","owner","password","Password123!"),null).status);
         token=(String)send("POST","/auth/login",Map.of("username","owner","password","Password123!"),null).body.get("access_token");
         Reply store=send("POST","/stores",Map.of("name","Fixture","platform","amazon"),token);assertEquals(201,store.status,store.body.toString());
@@ -51,6 +51,34 @@ class CommerceIntegrationTest {
         db.update("INSERT INTO orders(store_id,external_order_id,ordered_at,status,currency) VALUES(?,?,'2026-10-02 00:00:00','paid','USD')",sid,"O1");
         long oid=db.queryForObject("SELECT id FROM orders WHERE store_id=?",Long.class,sid);
         for(int line:List.of(1,2))db.update("INSERT INTO order_items(store_id,order_id,product_id,line_no,quantity,unit_price,refund_amount) VALUES(?,?,?,?,2,10,1)",sid,oid,pid,line);
+    }
+    @Test void concurrentMarginJobSubmissionsPublishOneReport() throws Exception {
+        var fx = send("POST", "/api/v2/stores/"+sid+"/fx-rate-sets", Map.of(
+            "source","fixture","source_revision","jobs","rates",
+            List.of(Map.of("base_currency","USD","effective_date","2026-11-01","rate","7.00"))), token);
+        assertEquals(200, fx.status);
+        var request = Map.of("store_ids",List.of(sid,sid),"fx_rate_set_id",fx.body.get("id"),
+            "start","2026-11-01","end","2026-11-02");
+        String base = "/api/v2/margin-report-jobs";
+        String id;
+        try (var pool = Executors.newFixedThreadPool(4)) {
+            var results = pool.invokeAll(Collections.nCopies(8, (Callable<Reply>) () -> send("POST",base,request,token)));
+            id = (String) results.getFirst().get().body.get("id");
+            assertNotNull(id);
+            for (var result : results) {
+                assertEquals(202,result.get().status);
+                assertEquals(id,result.get().body.get("id"));
+            }
+        }
+        Reply status = send("GET",base+"/"+id,null,token);
+        for (int i=0; i<50 && Set.of("QUEUED","RUNNING").contains(status.body.get("status")); i++) {
+            Thread.sleep(100);
+            status = send("GET",base+"/"+id,null,token);
+        }
+        assertEquals("SUCCEEDED",status.body.get("status"),status.body.toString());
+        assertEquals(1,status.body.get("attempts"));
+        assertEquals(200,send("GET","/api/v2/margin-reports/"+id,null,token).status);
+        assertEquals(1,db.queryForObject("SELECT COUNT(*) FROM margin_reports",Integer.class));
     }
     Map<String,Object> query(String metric){return Map.of("metric",metric,"group_by","currency","start","2026-10-01T00:00:00Z","end","2026-10-03T00:00:00Z");}
     @Test void exchangeRateSetsPreserveVersionsAndRejectDuplicateDates()throws Exception{
