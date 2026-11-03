@@ -186,14 +186,21 @@ test('真实毛利报表：页面提交任务并读取最新已发布版本',asy
   const storeId=store.id as number,base=`/api/v2/stores/${storeId}`
   await call('post',`${base}/catalog-products`,token,{internal_sku:'E2E-MUG',title:'E2E Mug',base_unit:'piece'})
   await call('put',`${base}/product-mappings/E2E-SKU`,token,{internal_sku:'E2E-MUG'})
-  const upload=async(kind:string,csv:string)=>call('post',`${base}/source-imports/${kind}`,token,undefined,{file:{name:`${kind}.csv`,mimeType:'text/csv',buffer:Buffer.from(csv)}})
+  const fx=await call('post',`${base}/fx-rate-sets`,token,{source:'playwright-e2e',source_revision:String(suffix),rates:[{base_currency:'USD',effective_date:'2026-10-31',rate:'7.00'},{base_currency:'USD',effective_date:'2026-11-01',rate:'7.00'}]})
+  await page.addInitScript(value=>sessionStorage.setItem('sellerpilot_token',value),token)
+  await page.goto('/')
+  await page.getByRole('button',{name:'平台文件导入',exact:true}).click()
+  const upload=async(kind:string,csv:string)=>{
+    await page.getByLabel('统一导入内容').selectOption(kind)
+    await page.getByLabel('平台 CSV 文件').setInputFiles({name:`${kind}.csv`,mimeType:'text/csv',buffer:Buffer.from(csv)})
+    await page.getByRole('button',{name:'导入平台文件',exact:true}).click()
+    await expect(page.getByRole('heading',{name:'平台文件导入成功'})).toBeVisible()
+  }
   const key=`e2e-${suffix}`
   await upload('orders',`platform_code,store_key,external_order_id,ordered_at,paid_at,status,currency\nmarket-a,${key},E2E-ORDER,2026-11-01T09:00:00Z,2026-11-01T09:00:00Z,paid,USD\n`)
   await upload('procurement-batches',`platform_code,store_key,source_batch_id,external_sku,received_at,quantity,unit_purchase_cost,currency\nmarket-a,${key},E2E-LOT,E2E-SKU,2026-10-31T09:00:00Z,2,4.00,USD\n`)
   await upload('order-items',`platform_code,store_key,external_line_id,external_order_id,external_sku,quantity,unit_price,discount_amount,currency,source_batch_id\nmarket-a,${key},E2E-LINE,E2E-ORDER,E2E-SKU,1,10.00,0.00,USD,E2E-LOT\n`)
-  const fx=await call('post',`${base}/fx-rate-sets`,token,{source:'playwright-e2e',source_revision:String(suffix),rates:[{base_currency:'USD',effective_date:'2026-10-31',rate:'7.00'},{base_currency:'USD',effective_date:'2026-11-01',rate:'7.00'}]})
-  await page.addInitScript(value=>sessionStorage.setItem('sellerpilot_token',value),token)
-  await page.goto('/')
+
   await page.getByRole('button',{name:'人民币销售毛利',exact:true}).click()
   await page.getByLabel('开始日期（UTC）',{exact:true}).fill('2026-11-01')
   await page.getByLabel('结束日期（不含，UTC）',{exact:true}).fill('2026-11-02')
