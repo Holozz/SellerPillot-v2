@@ -220,3 +220,36 @@ test('真实毛利报表：页面提交任务并读取最新已发布版本',asy
   await expect(page.getByRole('heading',{name:reportHeading,exact:true})).toBeVisible()
   await expect(page.getByText('销售毛利：42.00 元',{exact:true})).toBeVisible()
 })
+
+test('STALE毛利任务：页面按最新数据重新生成',async({page})=>{
+  const result={complete:true,event_count:0,priced_event_count:0,sales_net_cny:'0.00',refunds_cny:'0.00',procurement_cost_cny:'0.00',returned_cost_cny:'0.00',known_margin_cny:'0.00',gross_margin_cny:'0.00',products:[],details:[],unpriced_events:[]}
+  let regenerated=false
+  await page.addInitScript(()=>sessionStorage.setItem('sellerpilot_token','ui-fixture'))
+  await page.route('**/*',async route=>{
+    const url=new URL(route.request().url()),p=url.pathname
+    if(!p.startsWith('/api/')){await route.fulfill({path:path.resolve('dist',p==='/'?'index.html':p.slice(1))});return}
+    let body:unknown={}
+    if(p==='/api/auth/me')body={id:1,username:'owner'}
+    else if(p==='/api/stores')body=[{id:1,name:'Store A',owner_id:1,platform:'market-a',source_store_key:'a'}]
+    else if(p.endsWith('/fx-rate-sets'))body=[{id:1,source:'fixture',source_revision:'v1'}]
+    else if(p.endsWith('/fx-rate-sets/1'))body={rates:[{base_currency:'USD',effective_date:'2026-11-01',rate:'7.00'}]}
+    else if(p==='/api/v2/margin-report-jobs'&&route.request().method()==='POST')body={id:'stale-job',status:'STALE',error:'店铺数据已变化，请按最新数据重新生成'}
+    else if(p.endsWith('/stale-job/regenerate')){regenerated=true;body={id:'fresh-job',status:'QUEUED'}}
+    else if(p.endsWith('/fresh-job'))body={id:'fresh-job',status:'SUCCEEDED',report_id:'fresh-report'}
+    else if(p==='/api/v2/margin-reports')body=[]
+    else if(p.endsWith('/fresh-report/summary'))body={id:'fresh-report',input_manifest:{start:'2026-11-01',end:'2026-11-02',store_ids:[1],fx_rate_set:{id:1,source:'fixture',source_revision:'v1'}},result}
+    await route.fulfill({json:body})
+  })
+  await page.goto('http://sellerpilot.test/')
+  await page.getByRole('button',{name:'人民币销售毛利',exact:true}).click()
+  await page.getByLabel('开始日期（UTC）',{exact:true}).fill('2026-11-01')
+  await page.getByLabel('结束日期（不含，UTC）',{exact:true}).fill('2026-11-02')
+  await page.getByLabel('历史汇率版本',{exact:true}).selectOption('1')
+  await page.getByRole('button',{name:'生成并保存毛利报表'}).click()
+  await expect(page.getByText(/报表任务 数据版本已变化/)).toBeVisible()
+  await page.getByRole('button',{name:'按最新数据重新生成',exact:true}).click()
+  await expect(page.getByText('报表任务 排队中',{exact:true})).toBeVisible()
+  await page.getByRole('button',{name:'刷新任务状态',exact:true}).click()
+  await expect(page.getByRole('heading',{name:'报表 fresh-report',exact:true})).toBeVisible()
+  expect(regenerated).toBe(true)
+})

@@ -4,9 +4,7 @@
       "D:\\Dev\\Node.js\\node.exe",
       "D:\\Project\\SellerPilot-v2\\frontend\\node_modules\\@playwright\\test\\cli.js",
       "test",
-      "e2e/java.spec.ts",
-      "--grep",
-      "真实毛利报表"
+      "e2e/java.spec.ts"
     ],
     "configFile": "D:\\Project\\SellerPilot-v2\\frontend\\playwright.config.ts",
     "rootDir": "D:/Project/SellerPilot-v2/frontend/e2e",
@@ -102,6 +100,108 @@
       "line": 0,
       "specs": [
         {
+          "title": "毛利报表界面：跨店选择、缺汇率提示和历史复算",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 60000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 1429,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-11-03T03:34:55.925Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "644127df31e1323f1062-de0573ed936e5c074aa7",
+          "file": "java.spec.ts",
+          "line": 4,
+          "column": 1
+        },
+        {
+          "title": "统一导入界面：映射确认与冲突修订需用户确认",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 60000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 511,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-11-03T03:34:57.593Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "644127df31e1323f1062-eb18280b9e67399fe41c",
+          "file": "java.spec.ts",
+          "line": 78,
+          "column": 1
+        },
+        {
+          "title": "Java业务链：注册、商品、订单与明细、经营查询、审批回执",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 60000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 2684,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-11-03T03:34:58.116Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "644127df31e1323f1062-ce3af3fb15279aa68bc4",
+          "file": "java.spec.ts",
+          "line": 122,
+          "column": 1
+        },
+        {
           "title": "真实毛利报表：页面提交任务并读取最新已发布版本",
           "ok": true,
           "tags": [],
@@ -117,12 +217,12 @@
                   "workerIndex": 0,
                   "parallelIndex": 0,
                   "status": "passed",
-                  "duration": 4614,
+                  "duration": 1502,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-11-03T03:25:53.105Z",
+                  "startTime": "2026-11-03T03:35:00.811Z",
                   "annotations": [],
                   "attachments": []
                 }
@@ -134,15 +234,49 @@
           "file": "java.spec.ts",
           "line": 174,
           "column": 1
+        },
+        {
+          "title": "STALE毛利任务：页面按最新数据重新生成",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 60000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 491,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-11-03T03:35:02.325Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "644127df31e1323f1062-dad5e913a9a7c01a4537",
+          "file": "java.spec.ts",
+          "line": 224,
+          "column": 1
         }
       ]
     }
   ],
   "errors": [],
   "stats": {
-    "startTime": "2026-11-03T03:25:52.590Z",
-    "duration": 5604.088,
-    "expected": 1,
+    "startTime": "2026-11-03T03:34:55.525Z",
+    "duration": 7500.536,
+    "expected": 5,
     "skipped": 0,
     "unexpected": 0,
     "flaky": 0

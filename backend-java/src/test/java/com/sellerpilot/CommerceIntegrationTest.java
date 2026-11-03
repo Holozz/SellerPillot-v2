@@ -221,24 +221,28 @@ class CommerceIntegrationTest {
         assertEquals(200,fx.status,fx.body.toString());
         var first=Map.of("store_ids",List.of(sid),"fx_rate_set_id",fx.body.get("id"),
             "start","2026-01-01","end","2026-01-02");
-        String firstId=null;
-        for(int day=0;day<32;day++){
-            var query=Map.of("store_ids",List.of(sid),"fx_rate_set_id",fx.body.get("id"),
-                "start",java.time.LocalDate.of(2026,1,1).plusDays(day).toString(),
-                "end",java.time.LocalDate.of(2026,1,2).plusDays(day).toString());
-            var accepted=send("POST","/api/v2/margin-report-jobs",query,token);
-            assertEquals(202,accepted.status,accepted.body.toString());
-            if(day==0)firstId=(String)accepted.body.get("id");
+        try {
+            String firstId=null;
+            for(int day=0;day<32;day++){
+                var query=Map.of("store_ids",List.of(sid),"fx_rate_set_id",fx.body.get("id"),
+                    "start",java.time.LocalDate.of(2026,1,1).plusDays(day).toString(),
+                    "end",java.time.LocalDate.of(2026,1,2).plusDays(day).toString());
+                var accepted=send("POST","/api/v2/margin-report-jobs",query,token);
+                assertEquals(202,accepted.status,accepted.body.toString());
+                if(day==0)firstId=(String)accepted.body.get("id");
+            }
+            var rejected=send("POST","/api/v2/margin-report-jobs",Map.of(
+                "store_ids",List.of(sid),"fx_rate_set_id",fx.body.get("id"),
+                "start","2026-02-02","end","2026-02-03"),token);
+            assertEquals(429,rejected.status,rejected.body.toString());
+            assertEquals("报表任务队列已满，请稍后重试",rejected.body.get("detail"));
+            var duplicate=send("POST","/api/v2/margin-report-jobs",first,token);
+            assertEquals(202,duplicate.status,duplicate.body.toString());
+            assertEquals(firstId,duplicate.body.get("id"));
+            assertEquals(32,db.queryForObject("SELECT COUNT(*) FROM margin_report_jobs WHERE status='QUEUED'",Integer.class));
+        } finally {
+            db.update("DELETE FROM margin_report_jobs WHERE requested_by=(SELECT owner_id FROM stores WHERE id=?)",sid);
         }
-        var rejected=send("POST","/api/v2/margin-report-jobs",Map.of(
-            "store_ids",List.of(sid),"fx_rate_set_id",fx.body.get("id"),
-            "start","2026-02-02","end","2026-02-03"),token);
-        assertEquals(429,rejected.status,rejected.body.toString());
-        assertEquals("报表任务队列已满，请稍后重试",rejected.body.get("detail"));
-        var duplicate=send("POST","/api/v2/margin-report-jobs",first,token);
-        assertEquals(202,duplicate.status,duplicate.body.toString());
-        assertEquals(firstId,duplicate.body.get("id"));
-        assertEquals(32,db.queryForObject("SELECT COUNT(*) FROM margin_report_jobs WHERE status='QUEUED'",Integer.class));
     }
     Map<String,Object> query(String metric){return Map.of("metric",metric,"group_by","currency","start","2026-10-01T00:00:00Z","end","2026-10-03T00:00:00Z");}
     @Test void exchangeRateSetsPreserveVersionsAndRejectDuplicateDates()throws Exception{
