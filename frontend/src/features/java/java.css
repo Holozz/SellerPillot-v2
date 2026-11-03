@@ -2,3 +2,42 @@
 .source-history pre { overflow: auto; max-height: 24rem; padding: 1rem; background: var(--surface, #f5f5f5); }
 .margin-store { display: inline-flex; align-items: center; gap: .5rem; margin: .5rem 1rem .5rem 0; }
 .margin-store input { width: auto; }
+.workspace-subnavigation:not([hidden]) { display: grid; }
+.workspace-subnavigation button { padding-inline-start: 32px; }
+@media (max-width: 760px) {
+  .workspace-subnavigation:not([hidden]) { display: flex; flex: 1 0 100%; flex-wrap: wrap; }
+  .workspace-subnavigation button { padding-inline-start: 12px; }
+}
+
+.margin-workbench { display: grid; gap: 18px; min-width: 0; }
+.margin-workbench > * { min-width: 0; margin-block: 0; }
+.report-controls, .report-tools, .report-job, .report-result {
+  border: 1px solid var(--line);
+  padding: clamp(14px, 2vw, 24px);
+}
+.report-controls, .report-job { background: #f6f8fb; }
+.report-controls fieldset { min-width: 0; border: 0; padding: 0; margin: 0; }
+.report-controls legend, .report-tools > summary { font-weight: 650; }
+.report-controls .report-filters { padding: 0; border: 0; margin: 12px 0; background: transparent; }
+.report-actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 12px 0; }
+.report-tools textarea { width: 100%; min-height: 6rem; padding: 10px; font: inherit; }
+.report-result { border-top: 3px solid #176b63; }
+.report-result h3, .report-tools h3 { margin-top: 0; }
+.report-result p, .report-tools p { overflow-wrap: anywhere; }
+.report-total { color: #155e56; font-size: clamp(1.2rem, 2.5vw, 1.8rem); font-weight: 700; }
+.report-ledger {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 135px), 1fr));
+  gap: 1px;
+  background: var(--line);
+  border: 1px solid var(--line);
+  margin: 16px 0;
+}
+.report-ledger div { min-width: 0; padding: 12px; background: #f4f8f8; }
+.report-ledger dt { color: var(--muted); font-size: 13px; }
+.report-ledger dd { margin: 5px 0 0; font-weight: 650; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.margin-workbench table { font-variant-numeric: tabular-nums; }
+.margin-workbench :focus-visible, .source-upload :focus-visible { outline: 2px solid #176b63; outline-offset: 3px; }
+.source-upload pre { max-width: 100%; overflow: auto; padding: 12px; background: #f6f8fb; }
+.upload-receipt { margin-top: 16px; padding: 12px 16px; background: #eef8f3; border-left: 3px solid #176b63; }
+.upload-receipt h3, .upload-receipt p { margin: 4px 0; }

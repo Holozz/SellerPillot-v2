@@ -60,10 +60,10 @@ export default function MarginReports({ store, stores, onSessionExpired }: { sto
     }
   }
   const reportQuery = { store_ids: selected, fx_rate_set_id: Number(rateSet), start, end, ...(fixed ? { fixed_rate_date: fixedDate } : {}) }
-  return <section className="source-history">
+  return <section className="source-history margin-workbench">
     <div className="section-heading"><div><h2>人民币销售毛利报表</h2><p>按付款日确认销售、退款确认日冲减收入，采购成本按批次入库日折算；仅确认退货入库时转回成本。</p></div><button className="quiet-button" disabled={busy} onClick={() => void run(refresh)}>刷新汇率与历史</button></div>
     {error && <p className="error-message" role="alert">{error}</p>}{notice && <p role="status">{notice}</p>}{busy && <p role="status">正在处理…</p>}
-    <details><summary>导入历史汇率版本（仅店铺所有者）</summary>
+    <details className="report-tools"><summary>导入历史汇率版本（仅店铺所有者）</summary>
       <p className="hint">每行填写“原币代码,有效日期,汇率”，例如 USD,2026-11-01,7.00，表示 1 USD = 7.00 CNY。请填写可追溯来源和修订号；同币种人民币无需填写。</p>
       <form className="java-query-form" onSubmit={event => { event.preventDefault(); void run(async signal => {
         const parsed = rateText.trim().split(/\r?\n/).map((line, index) => {
@@ -78,23 +78,23 @@ export default function MarginReports({ store, stores, onSessionExpired }: { sto
         <label>历史汇率行<textarea required rows={5} value={rateText} disabled={busy} onChange={event => setRateText(event.target.value)} /></label><button className="primary-button compact" disabled={busy}>保存汇率版本</button>
       </form>
     </details>
-    <form onSubmit={event => { event.preventDefault(); void run(async signal => {
+    <form className="report-controls" onSubmit={event => { event.preventDefault(); void run(async signal => {
       const created = await request<MarginJob>('/v2/margin-report-jobs', { method: 'POST', body: JSON.stringify(reportQuery), signal })
       await showJob(created, signal)
     }) }}>
       <fieldset disabled={busy}><legend>同一卖家的目标店铺</legend>{stores.filter(candidate => candidate.owner_id === store.owner_id).map(candidate => <label key={candidate.id} className="margin-store"><input type="checkbox" checked={selected.includes(candidate.id)} onChange={event => setSelected(previous => event.target.checked ? [...previous, candidate.id] : previous.filter(id => id !== candidate.id))} />{candidate.name} · {candidate.platform}</label>)}</fieldset>
-      <div className="java-query-form">
+      <div className="java-query-form report-filters">
         <label>开始日期（UTC）<input required type="date" value={start} disabled={busy} onChange={event => setStart(event.target.value)} /></label><label>结束日期（不含，UTC）<input required type="date" value={end} disabled={busy} onChange={event => setEnd(event.target.value)} /></label>
         <label>历史汇率版本<select aria-label="历史汇率版本" required value={rateSet} disabled={busy} onChange={event => { const id = event.target.value; setRateSet(id); setRates([]); if (id) void run(async signal => { const data = await request<{ rates: FxRate[] }>(`${base}/fx-rate-sets/${id}`, { signal }); if (!signal.aborted) setRates(data.rates) }) }}><option value="">请选择汇率版本</option>{sets.map(set => <option key={set.id} value={set.id}>{set.source} · {set.source_revision}（#{set.id}）</option>)}</select></label><button className="primary-button compact" disabled={busy || !selected.length || !rateSet}>生成并保存毛利报表</button>
       </div>
       <label className="margin-store"><input type="checkbox" checked={fixed} disabled={busy} onChange={event => setFixed(event.target.checked)} />使用固定日期汇率折算销售、退款与采购成本</label>
       {fixed && <label>固定汇率日期<input type="date" required value={fixedDate} disabled={busy} onChange={event => setFixedDate(event.target.value)} /></label>}
-      <button type="button" className="quiet-button" disabled={busy || !selected.length || !rateSet || !start || !end || (fixed && !fixedDate)} onClick={() => void run(async signal => {
+      <div className="report-actions"><button type="button" className="quiet-button" disabled={busy || !selected.length || !rateSet || !start || !end || (fixed && !fixedDate)} onClick={() => void run(async signal => {
         const latest = await request<Report>('/v2/margin-reports/latest', { method: 'POST', body: JSON.stringify(reportQuery), signal })
         if (!signal.aborted) { setReport(latest); setDetails(null); setDetailPage(0) }
-      })}>查看最新报表</button>
+      })}>查看最新报表</button></div>
     </form>
-    {job && <div>
+    {job && <div className="report-job">
       <p role="status">报表任务 {jobLabels[job.status]}{job.error ? `（${job.error}）` : ''}</p>
       <button className="quiet-button" disabled={busy} onClick={() => void run(async signal => {
         await showJob(await request<MarginJob>(`/v2/margin-report-jobs/${job.id}`, { signal }), signal)
@@ -108,25 +108,19 @@ export default function MarginReports({ store, stores, onSessionExpired }: { sto
     </div>}
     <p className="hint">日期区间左闭右开，最多 20 家店、366 天、10000 条销售/退款事件。当前只匹配业务日期当天汇率；缺失记录保留原币并不计入已定价小计。</p>
     {rates.length > 0 && <details><summary>查看当前所选汇率依据（{rates.length} 条）</summary><div className="java-table-scroll"><table><thead><tr><th>原币</th><th>有效日</th><th>1 单位原币折人民币</th></tr></thead><tbody>{rates.map(rate => <tr key={`${rate.base_currency}:${rate.effective_date}`}><td>{rate.base_currency}</td><td>{rate.effective_date}</td><td>{rate.rate}</td></tr>)}</tbody></table></div></details>}
-    <h3>包含当前店铺的最近 50 份可访问报表</h3><div className="java-table-scroll"><table><thead><tr><th>生成时间（UTC）</th><th>期间</th><th>状态</th><th>人民币毛利 / 已定价小计</th><th>查看</th></tr></thead><tbody>{history.map(item => <tr key={item.id}><td>{item.created_at}</td><td>{item.start_date} 至 {item.end_date}（不含）</td><td>{item.complete ? '完整定价' : '汇率不完整'}</td><td>{item.known_margin_cny}</td><td><button className="quiet-button" disabled={busy} onClick={() => void run(signal => open(item.id, signal))}>打开报表</button></td></tr>)}</tbody></table></div>
-    {!history.length && <p className="hint">暂无可访问的已保存报表。</p>}
-    <h3>报表差额对比</h3><p className="hint">须为相同店铺、期间和口径。固定汇率报表还须共用同一汇率版本及日期；缺汇率时不分解完整毛利。</p>
-    <form className="java-query-form" onSubmit={event => { event.preventDefault(); void run(async signal => { setComparison(null); const data = await request<Comparison>('/v2/margin-reports/compare', { method: 'POST', body: JSON.stringify({ baseline_id: baseline, target_id: target }), signal }); if (!signal.aborted) setComparison(data) }) }}>
-      <label>基准报表<select aria-label="基准报表" required disabled={busy} value={baseline} onChange={event => { setBaseline(event.target.value); setComparison(null) }}><option value="">请选择</option>{history.map(item => <option key={item.id} value={item.id}>{item.id} · {item.start_date} · {item.known_margin_cny} 元</option>)}</select></label>
-      <label>目标报表<select aria-label="目标报表" required disabled={busy} value={target} onChange={event => { setTarget(event.target.value); setComparison(null) }}><option value="">请选择</option>{history.map(item => <option key={item.id} value={item.id}>{item.id} · {item.start_date} · {item.known_margin_cny} 元</option>)}</select></label><button className="primary-button compact" disabled={busy || !baseline || !target}>计算报表差额</button>
-    </form>
-    {comparison && <section><p role="status">毛利差额 {comparison.margin_delta_cny} 元 = 业务数据变化 {comparison.business_data_delta_cny} 元 + 汇率变化 {comparison.fx_delta_cny} 元。</p><p className="hint">固定分解顺序：先用基准报表汇率计算目标事实，再切换目标汇率。此处为金额分解，不代表对业务原因的推断。</p>
-      <div className="java-table-scroll"><table><thead><tr><th>销售净额变化</th><th>退款变化</th><th>采购成本变化</th><th>退货成本转回变化</th></tr></thead><tbody><tr>{['sales_net_cny', 'refunds_cny', 'procurement_cost_cny', 'returned_cost_cny'].map(field => <td key={field}>{comparison.component_deltas[field]}</td>)}</tr></tbody></table></div>
-      <details><summary>查看变化事件（展示前 50 / 共 {comparison.changed_events.length} 条）</summary>{comparison.changed_events.slice(0, 50).map(event => <p key={event.event_key}>{event.event_key} · 毛利差额 {event.margin_delta_cny} 元 · 来源行 {event.before?.source_row_id ?? '无'} → {event.after?.source_row_id ?? '无'} · 批次修订 {event.before?.procurement_batch_id ?? '无'} → {event.after?.procurement_batch_id ?? '无'}</p>)}</details>
-    </section>}
-    {report && <section><h3>报表 {report.id}</h3>
+    {report && <section className="report-result"><h3>报表 {report.id}</h3>
       {report.input_manifest && <p>期间：{report.input_manifest.start} 至 {report.input_manifest.end}（不含）· 店铺：{report.input_manifest.store_ids.join('、')} · 汇率：{report.input_manifest.fx_rate_set.source} / {report.input_manifest.fx_rate_set.source_revision} · {report.input_manifest.fixed_rate_date ? `固定日期 ${report.input_manifest.fixed_rate_date}` : '各业务日期汇率'}</p>}
       {report.input_manifest?.revalued_from && <p>采购成本重估来源报表：{report.input_manifest.revalued_from}。销售、退款和汇率沿用来源报表快照。</p>}
-      <p role="status">{report.result.complete ? `销售毛利：${report.result.gross_margin_cny} 元` : `汇率不完整，已定价毛利小计：${report.result.known_margin_cny} 元；完整销售毛利暂不可用。`}</p>
+      <p className="report-total" role="status">{report.result.complete ? `销售毛利：${report.result.gross_margin_cny} 元` : `汇率不完整，已定价毛利小计：${report.result.known_margin_cny} 元；完整销售毛利暂不可用。`}</p>
       <p>已定价事件 {report.result.priced_event_count} / {report.result.event_count}。覆盖范围仅指本系统已发布的销售和退款记录。</p>
-      <div className="java-table-scroll"><table><thead><tr><th>销售净额（扣折扣）</th><th>退款</th><th>已售采购成本</th><th>退货成本转回</th></tr></thead><tbody><tr><td>{report.result.sales_net_cny}</td><td>{report.result.refunds_cny}</td><td>{report.result.procurement_cost_cny}</td><td>{report.result.returned_cost_cny}</td></tr></tbody></table></div>
+      <dl className="report-ledger">
+        <div><dt>销售净额（扣折扣）</dt><dd>{report.result.sales_net_cny} 元</dd></div>
+        <div><dt>退款</dt><dd>{report.result.refunds_cny} 元</dd></div>
+        <div><dt>已售采购成本</dt><dd>{report.result.procurement_cost_cny} 元</dd></div>
+        <div><dt>退货成本转回</dt><dd>{report.result.returned_cost_cny} 元</dd></div>
+      </dl>
       {!report.result.complete && <p className="hint">上述各项仅统计完整定价事件；下方未定价明细可核对原币金额和缺失日期。</p>}
-      <button className="quiet-button" disabled={busy} onClick={() => void run(async signal => {
+      <div className="report-actions"><button className="quiet-button" disabled={busy} onClick={() => void run(async signal => {
         const value = await request<Result>(`/v2/margin-reports/${report.id}/recompute`, { method: 'POST', signal })
         if (!signal.aborted) { setReport({ ...report, result: value }); setNotice('已使用原报表输入重新计算，保存的报表未被覆盖。') }
       })}>用原输入复算</button>
@@ -136,7 +130,7 @@ export default function MarginReports({ store, stores, onSessionExpired }: { sto
           const created = await request<MarginJob>(`/v2/margin-reports/${report.id}/revalue-costs`, { method: 'POST', signal })
           await showJob(created, signal)
         })
-      }}>按最新采购成本生成新报表</button>
+      }}>按最新采购成本生成新报表</button></div>
       <h4>统一商品毛利排序（展示前 50 项）</h4><div className="java-table-scroll"><table><thead><tr><th>统一 SKU</th><th>已定价毛利（元）</th></tr></thead><tbody>{report.result.products.slice(0, 50).map(product => <tr key={product.internal_sku}><td>{product.internal_sku}</td><td>{product.known_margin_cny}</td></tr>)}</tbody></table></div>
       {details === null ? <button className="quiet-button" disabled={busy || report.result.event_count === 0} onClick={() => void run(signal => openDetails(report.id, 0, signal))}>加载折算明细</button> : <>
       <h4>折算明细（第 {detailPage + 1} 页）</h4><div className="java-table-scroll"><table><thead><tr><th>店铺 / 来源行</th><th>业务明细</th><th>事件</th><th>原币收入/退款</th><th>原币采购成本</th><th>收入/退款汇率日期及汇率</th><th>采购汇率日期及汇率</th><th>状态 / 毛利影响（未舍入）</th></tr></thead><tbody>{details.map((detail, index) => <tr key={index}><td>{detail.store_id} / #{detail.source_row_id}</td><td>{detail.external_line_id}</td><td>{detail.event === 'sales' ? '销售' : '退款/退货'}</td><td>{detail.original_amount} {detail.currency}</td><td>{detail.original_purchase_cost} {detail.cost_currency}</td><td>{detail.revenue_rate_date} / {detail.revenue_rate ?? '缺失'}</td><td>{detail.cost_rate_date === 'MULTIPLE' ? '按下方批次分配明细折算' : `${detail.cost_rate_date} / ${detail.cost_rate ?? '缺失'}`}</td><td>{detail.complete ? detail.margin_cny_unrounded : '未定价'}</td></tr>)}</tbody></table></div>
@@ -147,5 +141,18 @@ export default function MarginReports({ store, stores, onSessionExpired }: { sto
       <button className="quiet-button" disabled={busy || detailPage === 0} onClick={() => void run(signal => openDetails(report.id, detailPage - 1, signal))}>上一页明细</button><button className="quiet-button" disabled={busy || (detailPage + 1) * 50 >= report.result.event_count} onClick={() => void run(signal => openDetails(report.id, detailPage + 1, signal))}>下一页明细</button>
       </>}
     </section>}
+    <details className="report-tools"><summary>历史报表（{history.length} 份）</summary><div className="java-table-scroll"><table><thead><tr><th>生成时间（UTC）</th><th>期间</th><th>状态</th><th>人民币毛利 / 已定价小计</th><th>查看</th></tr></thead><tbody>{history.map(item => <tr key={item.id}><td>{item.created_at}</td><td>{item.start_date} 至 {item.end_date}（不含）</td><td>{item.complete ? '完整定价' : '汇率不完整'}</td><td>{item.known_margin_cny}</td><td><button className="quiet-button" disabled={busy} onClick={() => void run(signal => open(item.id, signal))}>打开报表</button></td></tr>)}</tbody></table></div>
+    {!history.length && <p className="hint">暂无可访问的已保存报表。</p>}
+    </details>
+    <section className="report-tools"><h3>报表差额对比</h3><p className="hint">须为相同店铺、期间和口径。固定汇率报表还须共用同一汇率版本及日期；缺汇率时不分解完整毛利。</p>
+    <form className="java-query-form" onSubmit={event => { event.preventDefault(); void run(async signal => { setComparison(null); const data = await request<Comparison>('/v2/margin-reports/compare', { method: 'POST', body: JSON.stringify({ baseline_id: baseline, target_id: target }), signal }); if (!signal.aborted) setComparison(data) }) }}>
+      <label>基准报表<select aria-label="基准报表" required disabled={busy} value={baseline} onChange={event => { setBaseline(event.target.value); setComparison(null) }}><option value="">请选择</option>{history.map(item => <option key={item.id} value={item.id}>{item.id} · {item.start_date} · {item.known_margin_cny} 元</option>)}</select></label>
+      <label>目标报表<select aria-label="目标报表" required disabled={busy} value={target} onChange={event => { setTarget(event.target.value); setComparison(null) }}><option value="">请选择</option>{history.map(item => <option key={item.id} value={item.id}>{item.id} · {item.start_date} · {item.known_margin_cny} 元</option>)}</select></label><button className="primary-button compact" disabled={busy || !baseline || !target}>计算报表差额</button>
+    </form>
+    {comparison && <section><p role="status">毛利差额 {comparison.margin_delta_cny} 元 = 业务数据变化 {comparison.business_data_delta_cny} 元 + 汇率变化 {comparison.fx_delta_cny} 元。</p><p className="hint">固定分解顺序：先用基准报表汇率计算目标事实，再切换目标汇率。此处为金额分解，不代表对业务原因的推断。</p>
+      <div className="java-table-scroll"><table><thead><tr><th>销售净额变化</th><th>退款变化</th><th>采购成本变化</th><th>退货成本转回变化</th></tr></thead><tbody><tr>{['sales_net_cny', 'refunds_cny', 'procurement_cost_cny', 'returned_cost_cny'].map(field => <td key={field}>{comparison.component_deltas[field]}</td>)}</tr></tbody></table></div>
+      <details><summary>查看变化事件（展示前 50 / 共 {comparison.changed_events.length} 条）</summary>{comparison.changed_events.slice(0, 50).map(event => <p key={event.event_key}>{event.event_key} · 毛利差额 {event.margin_delta_cny} 元 · 来源行 {event.before?.source_row_id ?? '无'} → {event.after?.source_row_id ?? '无'} · 批次修订 {event.before?.procurement_batch_id ?? '无'} → {event.after?.procurement_batch_id ?? '无'}</p>)}</details>
+    </section>}
+    </section>
   </section>
 }

@@ -47,8 +47,13 @@ export default function SourceUpload({ store, onSessionExpired }: { store: Store
     const url = URL.createObjectURL(new Blob([headers[store.platform][kind] + '\n'], { type: 'text/csv;charset=utf-8' }))
     const link = document.createElement('a'); link.href = url; link.download = `${store.platform}-${kind}.csv`; link.click(); URL.revokeObjectURL(url)
   }
-  return <section>
-    <h2>统一平台文件导入</h2><p>当前平台：{store.platform} · 来源店铺标识：{store.source_store_key}</p>
+  return <section className="source-upload">
+    <h2>统一平台文件导入</h2>
+    <dl className="report-ledger">
+      <div><dt>当前店铺</dt><dd>{store.name}</dd></div>
+      <div><dt>平台</dt><dd>{store.platform}</dd></div>
+      <div><dt>来源店铺标识</dt><dd>{store.source_store_key}</dd></div>
+    </dl>
     {!headers[store.platform] ? <p className="hint">当前平台尚未配置统一文件格式，请使用现有订单导入入口。</p> : <>
       <p className="hint">先在“统一商品映射”关联来源 SKU，再依次导入采购批次、订单、销售明细和退款。文件中的平台和店铺标识须与当前店铺一致。仅所有者可导入。</p>
       <form className="java-query-form" onSubmit={event => { event.preventDefault(); void upload() }}>
@@ -63,7 +68,7 @@ export default function SourceUpload({ store, onSessionExpired }: { store: Store
       </details>}
       {error && <p role="alert" className="error-message">{error}</p>}
       {conflict && <button className="primary-button compact" disabled={busy} onClick={() => void upload(true)}>核对后确认追加修订</button>}
-      {receipt && <div role="status"><h3>{receipt.duplicate ? '文件已导入，无需重复处理' : '平台文件导入成功'}</h3><p>批次 #{receipt.import_id} · {labels[kind]} · {receipt.row_count} 行。可在“来源与修订”核对原始记录及业务版本。</p></div>}
+      {receipt && <div className="upload-receipt" role="status"><h3>{receipt.duplicate ? '文件已导入，无需重复处理' : '平台文件导入成功'}</h3><p>{labels[kind]}共 {receipt.row_count} 行，批次 #{receipt.import_id}。可在“来源与修订”核对记录。</p></div>}
     </>}
   </section>
 }

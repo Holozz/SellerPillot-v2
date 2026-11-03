@@ -110,20 +110,21 @@ export default function ProductManager({ store, onSessionExpired }: Props) {
   }
 
   return <section className="inventory-panel" aria-labelledby="inventory-heading" aria-busy={busy}>
-    <div className="chat-heading"><div><h2 id="inventory-heading">商品管理</h2><p>{store.name} / 商品资料与库存</p></div>
+    <div className="chat-heading"><div><h2 id="inventory-heading">商品管理</h2><p>{store.name} / 商品资料与手动库存</p></div>
       <button className="primary-button compact" disabled={busy} onClick={() => {
         setEditor(emptyEditor()); setEditingSku(null); setDeleting(null); setError(''); setNotice('')
       }}>新增商品</button></div>
     {error && <p className="error-message" role="alert">{error}</p>}
     {notice && <p className="success-message" role="status">{notice}</p>}
+    <p className="hint">订单和退款导入不会修改这里的库存。毛利按销售明细的成交价和采购批次的进价计算。</p>
     {editor && <form className="editor-form product-editor" aria-label={editingSku ? '编辑商品' : '新增商品'} onSubmit={handleSave}>
       <h3>{editingSku ? `编辑 ${editingSku}` : '新增商品'}</h3>
       <label>SKU<input required minLength={3} maxLength={30} pattern="[A-Za-z0-9-]+" disabled={busy || editingSku !== null}
         value={editor.sku} onChange={event => setField('sku', event.target.value)} /></label>
       <label className="wide-field">商品名称<input required maxLength={200} disabled={busy} value={editor.title} onChange={event => setField('title', event.target.value)} /></label>
-      <label>单价<input required inputMode="decimal" disabled={busy} value={editor.price} onChange={event => setField('price', event.target.value)} /></label>
+      <label>参考售价<input required inputMode="decimal" disabled={busy} value={editor.price} onChange={event => setField('price', event.target.value)} /></label>
       <label>币种<input required pattern="[A-Z]{3}" maxLength={3} disabled={busy} value={editor.currency} onChange={event => setField('currency', event.target.value.toUpperCase())} /></label>
-      <label>库存<input type="number" required min={0} max={2147483647} step={1} disabled={busy} value={editor.stock} onChange={event => setField('stock', event.target.value)} /></label>
+      <label>库存（手动维护）<input type="number" required min={0} max={2147483647} step={1} disabled={busy} value={editor.stock} onChange={event => setField('stock', event.target.value)} /></label>
       <div className="form-actions"><button className="primary-button compact" disabled={busy || !editor.title.trim()}>{busy ? '正在保存…' : '保存商品'}</button>
         <button className="quiet-button" type="button" disabled={busy} onClick={() => setEditor(null)}>取消编辑</button></div>
     </form>}
@@ -142,7 +143,7 @@ export default function ProductManager({ store, onSessionExpired }: Props) {
     {result && <><p className="inventory-context">{result.mode === 'products' ? '商品列表' : `库存小于 ${result.threshold}`} / 本次 {result.items.length} 条</p>
       {result.items.length === 100 && <p className="inventory-warning">已达100条上限，可能还有未展示的商品。</p>}
       {result.items.length === 0 ? <p className="empty-state">{result.mode === 'products' ? '暂无商品，点击新增商品开始。' : '没有符合阈值的商品。'}</p> :
-        <div className="inventory-table" role="region" aria-label="商品列表" tabIndex={0}><table><thead><tr><th>SKU</th><th>商品名称</th><th>库存</th><th>单价</th><th>币种</th><th>操作</th></tr></thead>
+        <div className="inventory-table" role="region" aria-label="商品列表" tabIndex={0}><table><thead><tr><th>SKU</th><th>商品名称</th><th>库存</th><th>参考售价</th><th>币种</th><th>操作</th></tr></thead>
           <tbody>{result.items.map(product => <tr key={product.id}><td>{product.sku}</td><td className="inventory-title">{product.title}</td><td className={product.stock === 0 ? 'inventory-zero' : undefined}>{product.stock}</td><td>{product.price}</td><td>{product.currency}</td>
             <td className="row-actions"><button disabled={busy} onClick={() => handleEdit(product.sku)}>详情 / 编辑</button><button className="danger-link" disabled={busy} onClick={() => { setDeleting(product); setEditor(null); setError('') }}>删除</button></td></tr>)}</tbody></table></div>}</>}
   </section>

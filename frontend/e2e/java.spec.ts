@@ -54,6 +54,7 @@ test('毛利报表界面：跨店选择、缺汇率提示和历史复算',async(
   await page.getByRole('button',{name:'用原输入复算'}).click()
   await expect(page.getByText('已使用原报表输入重新计算，保存的报表未被覆盖。',{exact:true})).toBeVisible()
   expect(recomputed).toBe(1)
+  await page.getByText(/^历史报表（/).click()
   await page.getByRole('button',{name:'打开报表',exact:true}).click()
   await expect(page.getByRole('heading',{name:'报表 report-1',exact:true})).toBeVisible()
   await page.getByRole('checkbox',{name:'使用固定日期汇率折算销售、退款与采购成本'}).check()
@@ -93,6 +94,7 @@ test('统一导入界面：映射确认与冲突修订需用户确认',async({pa
     }else if(pathName.endsWith('/product-mappings/MUG-US')){
       mappings=[{source_sku:'MUG-US',internal_sku:'MUG-01',title:'Mug',mapping_version:1}];body=mappings[0]
     }else if(pathName.endsWith('/product-mappings'))body=mappings
+    else if(pathName==='/api/products'&&url.searchParams.get('store_id')==='1')body=[{sku:'MUG-US',title:'Mug in Store A'}]
     else if(pathName.includes('/source-imports/')){
       uploads++
       if(url.searchParams.get('confirm_conflicts')!=='true'){await route.fulfill({status:409,json:{detail:'内容不同，需confirm_conflicts=true'}});return}
@@ -102,6 +104,7 @@ test('统一导入界面：映射确认与冲突修订需用户确认',async({pa
   })
   await page.goto('http://sellerpilot.test/')
   await page.getByRole('button',{name:'统一商品映射',exact:true}).click()
+  await expect(page.locator('#source-sku-options option[value="MUG-US"]')).toHaveAttribute('label','Mug in Store A')
   await page.getByLabel('统一 SKU',{exact:true}).fill('MUG-01')
   await page.getByLabel('商品名称',{exact:true}).fill('Mug')
   await page.getByRole('button',{name:'创建统一商品',exact:true}).click()
@@ -135,12 +138,13 @@ test('Java业务链：注册、商品、订单与明细、经营查询、审批�
   await page.getByLabel('店铺名称').fill('浏览器验收店铺')
   await page.getByRole('button',{name:'保存店铺',exact:true}).click()
   await expect(page.getByRole('heading',{name:'核对经营数据'})).toBeVisible()
+  await page.getByRole('button',{name:'店铺管理',exact:true}).click()
   await page.getByRole('button',{name:'商品库存',exact:true}).click()
   await page.getByRole('button',{name:'新增商品',exact:true}).click()
   await page.getByLabel('SKU',{exact:true}).fill('JAR-001')
   await page.getByLabel('商品名称',{exact:true}).fill('Storage Jar 500ml')
-  await page.getByLabel('单价',{exact:true}).fill('10.00')
-  await page.getByLabel('库存',{exact:true}).fill('8')
+  await page.getByLabel('参考售价',{exact:true}).fill('10.00')
+  await page.getByLabel('库存（手动维护）',{exact:true}).fill('8')
   await page.getByRole('button',{name:'保存商品',exact:true}).click()
   await expect(page.getByRole('cell',{name:'JAR-001',exact:true})).toBeVisible()
   await page.getByRole('button',{name:'订单导入',exact:true}).click()
@@ -157,7 +161,7 @@ test('Java业务链：注册、商品、订单与明细、经营查询、审批�
   await page.getByRole('button',{name:'查询经营数据',exact:true}).click()
   await expect(page.getByRole('cell',{name:'38.00',exact:true}).first()).toBeVisible()
   await page.screenshot({path:'../docs/verification/java/metrics-desktop.png',fullPage:true})
-  await page.getByRole('button',{name:'操作审批',exact:true}).click()
+  await page.getByRole('button',{name:'商品标题审批',exact:true}).click()
   await page.getByLabel('商品',{exact:true}).selectOption({index:1})
   await page.getByLabel('建议的新标题').fill('Clear Glass Storage Jar 500ml')
   await page.getByRole('button',{name:'保存待确认草稿',exact:true}).click()

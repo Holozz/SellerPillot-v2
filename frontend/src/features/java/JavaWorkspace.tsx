@@ -20,6 +20,7 @@ const states:Record<string,string>={pending:'待确认',applied:'已应用',reje
 export default function JavaWorkspace({store,stores,onSessionExpired}:{store:Store;stores:Store[];onSessionExpired:()=>void}){
   const base=`/v2/stores/${store.id}`
   const [panel,setPanel]=useState<Panel>('metrics'),[busy,setBusy]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState('')
+  const [managementOpen,setManagementOpen]=useState(false)
   const today=new Date().toISOString().slice(0,10)
   const [start,setStart]=useState(new Date(Date.now()-7*86400000).toISOString().slice(0,10)),[end,setEnd]=useState(today)
   const [metric,setMetric]=useState('sales'),[group,setGroup]=useState('product'),[fact,setFact]=useState<Fact|null>(null)
@@ -41,8 +42,13 @@ export default function JavaWorkspace({store,stores,onSessionExpired}:{store:Sto
       <details className="java-query-note"><summary>查询口径与时间</summary><p>数据版本：{card.data_version} · 查询时间：{card.as_of} · {card.cache_hit?'复用当前版本结果':'本次计算结果'}</p></details></section>
   }
   return <div className="store-workspace"><nav className="workspace-navigation" aria-label="工作区导航">{([
-    ['metrics','经营分析'],['margin','人民币销售毛利'],['products','商品库存'],['catalog','统一商品映射'],['source-upload','平台文件导入'],['imports','订单导入'],['history','来源与修订'],['actions','操作审批'],['members','团队权限']
-  ] as [Panel,string][]).map(([id,label])=><button key={id} aria-pressed={panel===id} onClick={()=>setPanel(id)}>{label}</button>)}</nav><section className="workspace-page java-panel">
+    ['catalog','统一商品映射'],['source-upload','平台文件导入'],['margin','人民币销售毛利'],['history','来源与修订'],['metrics','经营分析'],['imports','订单导入']
+  ] as [Panel,string][]).map(([id,label])=><button key={id} aria-pressed={panel===id} onClick={()=>setPanel(id)}>{label}</button>)}
+    <button aria-expanded={managementOpen} aria-controls="store-management" onClick={()=>setManagementOpen(open=>!open)}>店铺管理 <span aria-hidden="true">{managementOpen?'▾':'▸'}</span></button>
+    <div id="store-management" className="workspace-subnavigation" hidden={!managementOpen}>{([
+      ['products','商品库存'],['actions','商品标题审批'],['members','团队权限']
+    ] as [Panel,string][]).map(([id,label])=><button key={id} aria-pressed={panel===id} onClick={()=>setPanel(id)}>{label}</button>)}</div>
+  </nav><section className="workspace-page java-panel">
     {error&&<p className="error-message" role="alert">{error}</p>}{notice&&<p className="success-message" role="status">{notice}</p>}
     {panel==='metrics'&&<><div className="section-heading"><div><h2>核对经营数据</h2><p>按统一口径查看销售额、订单数、销量与库存。</p></div></div>
       <form className="java-query-form" onSubmit={e=>{e.preventDefault();act(async()=>{
@@ -61,7 +67,7 @@ export default function JavaWorkspace({store,stores,onSessionExpired}:{store:Sto
     {panel==='catalog'&&<CatalogMappings storeId={store.id} onSessionExpired={onSessionExpired}/>}
     {panel==='source-upload'&&<SourceUpload store={store} onSessionExpired={onSessionExpired}/>}
     {panel==='margin'&&<MarginReports store={store} stores={stores} onSessionExpired={onSessionExpired}/>}
-    {panel==='actions'&&<><div className="section-heading"><div><h2>商品变更审批</h2><p>核对原值与建议后确认，过期版本不会覆盖当前商品。</p></div><button className="quiet-button" disabled={busy} onClick={()=>act(refreshActions)}>刷新</button></div>
+    {panel==='actions'&&<><div className="section-heading"><div><h2>商品标题审批</h2><p>核对原值与建议后确认，过期版本不会覆盖当前商品。</p></div><button className="quiet-button" disabled={busy} onClick={()=>act(refreshActions)}>刷新</button></div>
       <form className="java-query-form" onSubmit={e=>{e.preventDefault();const product=products.find(p=>p.id===Number(selected));if(!product)return;act(async()=>{
         await request(`${base}/proposals`,{method:'POST',body:JSON.stringify({product_id:product.id,product_version:product.version,title})});setTitle('');await refreshActions()
       })}}><label>商品<select aria-label="商品" required value={selected} onChange={e=>setSelected(e.target.value)}><option value="">请选择商品</option>{products.map(p=><option key={p.id} value={p.id}>{p.sku} · {p.title}</option>)}</select></label>
