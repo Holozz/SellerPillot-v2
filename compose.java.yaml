@@ -37,7 +37,7 @@ services:
     depends_on:
       mysql: {condition: service_healthy}
       redis: {condition: service_healthy}
-    ports: ["127.0.0.1:8081:8081"]
+    ports: ["127.0.0.1:18081:8081"]
   frontend:
     profiles: [app]
     build: frontend

@@ -1,1 +1,2 @@
 platform_code,store_key,external_refund_id,external_line_id,confirmed_at,refund_amount,currency,returned_quantity,restocked
+market-a,store-a,A-REFUND-DEMO-01,A-100-1,2026-11-03T10:00:00+00:00,4.00,USD,1,true
