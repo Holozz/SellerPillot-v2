@@ -170,3 +170,53 @@ test('Java业务链：注册、商品、订单与明细、经营查询、审批�
   await page.screenshot({path:'../docs/verification/java/approval-mobile.png',fullPage:true})
   expect(errors).toEqual([])
 })
+
+test('真实毛利报表：页面提交任务并读取最新已发布版本',async({page,request})=>{
+  const api=process.env.PLAYWRIGHT_API_BASE||'http://127.0.0.1:8081',suffix=Date.now(),username=`margin_e2e_${suffix}`,password='BrowserFixture123!'
+  const call=async(method:'get'|'post'|'put',path:string,token?:string,data?:unknown,form?:Record<string,{name:string,mimeType:string,buffer:Buffer}>)=>{
+    const response=await request[method](`${api}${path}`,{headers:token?{Authorization:`Bearer ${token}`}:{},data, multipart:form})
+    const body=await response.text()
+    expect(response.ok(),`${method.toUpperCase()} ${path}: ${response.status()} ${body}`).toBeTruthy()
+    return body?JSON.parse(body):{}
+  }
+  await call('post','/auth/register',undefined,{username,password})
+  const session=await call('post','/auth/login',undefined,{username,password})
+  const token=session.access_token as string
+  const store=await call('post','/stores',token,{name:`E2E ${suffix}`,platform:'market-a',source_store_key:`e2e-${suffix}`})
+  const storeId=store.id as number,base=`/api/v2/stores/${storeId}`
+  await call('post',`${base}/catalog-products`,token,{internal_sku:'E2E-MUG',title:'E2E Mug',base_unit:'piece'})
+  await call('put',`${base}/product-mappings/E2E-SKU`,token,{internal_sku:'E2E-MUG'})
+  const upload=async(kind:string,csv:string)=>call('post',`${base}/source-imports/${kind}`,token,undefined,{file:{name:`${kind}.csv`,mimeType:'text/csv',buffer:Buffer.from(csv)}})
+  const key=`e2e-${suffix}`
+  await upload('orders',`platform_code,store_key,external_order_id,ordered_at,paid_at,status,currency\nmarket-a,${key},E2E-ORDER,2026-11-01T09:00:00Z,2026-11-01T09:00:00Z,paid,USD\n`)
+  await upload('procurement-batches',`platform_code,store_key,source_batch_id,external_sku,received_at,quantity,unit_purchase_cost,currency\nmarket-a,${key},E2E-LOT,E2E-SKU,2026-10-31T09:00:00Z,2,4.00,USD\n`)
+  await upload('order-items',`platform_code,store_key,external_line_id,external_order_id,external_sku,quantity,unit_price,discount_amount,currency,source_batch_id\nmarket-a,${key},E2E-LINE,E2E-ORDER,E2E-SKU,1,10.00,0.00,USD,E2E-LOT\n`)
+  const fx=await call('post',`${base}/fx-rate-sets`,token,{source:'playwright-e2e',source_revision:String(suffix),rates:[{base_currency:'USD',effective_date:'2026-10-31',rate:'7.00'},{base_currency:'USD',effective_date:'2026-11-01',rate:'7.00'}]})
+  await page.addInitScript(value=>sessionStorage.setItem('sellerpilot_token',value),token)
+  await page.goto('/')
+  await page.getByRole('button',{name:'人民币销售毛利',exact:true}).click()
+  await page.getByLabel('开始日期（UTC）',{exact:true}).fill('2026-11-01')
+  await page.getByLabel('结束日期（不含，UTC）',{exact:true}).fill('2026-11-02')
+  await page.getByLabel('历史汇率版本',{exact:true}).selectOption(String(fx.id))
+  await expect(page.getByRole('button',{name:'生成并保存毛利报表'})).toBeEnabled()
+  await page.getByRole('button',{name:'生成并保存毛利报表'}).click()
+  await expect(page.getByText('报表任务 排队中',{exact:true})).toBeVisible()
+  for(let attempt=0;attempt<30;attempt++){
+    await page.getByRole('button',{name:'刷新任务状态',exact:true}).click()
+    if(await page.getByText('销售毛利：42.00 元',{exact:true}).count())break
+    await page.waitForTimeout(200)
+  }
+  await expect(page.getByRole('heading',{name:/报表 [a-f0-9-]+/})).toBeVisible({timeout:30000})
+  await expect(page.getByText('销售毛利：42.00 元',{exact:true})).toBeVisible()
+  await page.getByRole('button',{name:'查看最新报表',exact:true}).click()
+  await expect(page.getByText('销售毛利：42.00 元',{exact:true})).toBeVisible()
+  const reportHeading=await page.getByRole('heading',{name:/报表 [a-f0-9-]+/}).innerText()
+  await page.reload()
+  await page.getByRole('button',{name:'人民币销售毛利',exact:true}).click()
+  await page.getByLabel('开始日期（UTC）',{exact:true}).fill('2026-11-01')
+  await page.getByLabel('结束日期（不含，UTC）',{exact:true}).fill('2026-11-02')
+  await page.getByLabel('历史汇率版本',{exact:true}).selectOption(String(fx.id))
+  await page.getByRole('button',{name:'查看最新报表',exact:true}).click()
+  await expect(page.getByRole('heading',{name:reportHeading,exact:true})).toBeVisible()
+  await expect(page.getByText('销售毛利：42.00 元',{exact:true})).toBeVisible()
+})

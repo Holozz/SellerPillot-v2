@@ -3,7 +3,10 @@
     "argv": [
       "D:\\Dev\\Node.js\\node.exe",
       "D:\\Project\\SellerPilot-v2\\frontend\\node_modules\\@playwright\\test\\cli.js",
-      "test"
+      "test",
+      "e2e/java.spec.ts",
+      "--grep",
+      "真实毛利报表"
     ],
     "configFile": "D:\\Project\\SellerPilot-v2\\frontend\\playwright.config.ts",
     "rootDir": "D:/Project/SellerPilot-v2/frontend/e2e",
@@ -55,13 +58,11 @@
         "testMatch": "**/java.spec.ts",
         "timeout": 60000,
         "use": {
-          "baseURL": "http://127.0.0.1:5191",
+          "baseURL": "http://127.0.0.1:15191",
           "headless": true,
           "launchOptions": {
             "executablePath": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"
-          },
-          "screenshot": "only-on-failure",
-          "trace": "retain-on-failure"
+          }
         },
         "dependencies": [],
         "ignoreSnapshots": false,
@@ -101,7 +102,7 @@
       "line": 0,
       "specs": [
         {
-          "title": "Java业务链：注册、商品、订单与明细、经营查询、审批回执",
+          "title": "真实毛利报表：页面提交任务并读取最新已发布版本",
           "ok": true,
           "tags": [],
           "tests": [
@@ -116,12 +117,12 @@
                   "workerIndex": 0,
                   "parallelIndex": 0,
                   "status": "passed",
-                  "duration": 2758,
+                  "duration": 4614,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-10-26T14:39:42.434Z",
+                  "startTime": "2026-11-03T03:25:53.105Z",
                   "annotations": [],
                   "attachments": []
                 }
@@ -129,9 +130,9 @@
               "status": "expected"
             }
           ],
-          "id": "644127df31e1323f1062-ce3af3fb15279aa68bc4",
+          "id": "644127df31e1323f1062-984b324a13507c8e12b9",
           "file": "java.spec.ts",
-          "line": 3,
+          "line": 174,
           "column": 1
         }
       ]
@@ -139,8 +140,8 @@
   ],
   "errors": [],
   "stats": {
-    "startTime": "2026-10-26T14:39:42.034Z",
-    "duration": 3687.733,
+    "startTime": "2026-11-03T03:25:52.590Z",
+    "duration": 5604.088,
     "expected": 1,
     "skipped": 0,
     "unexpected": 0,
