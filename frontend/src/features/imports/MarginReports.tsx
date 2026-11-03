@@ -5,6 +5,8 @@ import type { Store } from '../../shared/types'
 interface FxSet { id: number; source: string; source_revision: string }
 interface FxRate { base_currency: string; effective_date: string; rate: string }
 interface History { id: string; start_date: string; end_date: string; complete: boolean; known_margin_cny: string; created_at: string }
+interface MarginJob { id: string; status: 'QUEUED' | 'RUNNING' | 'SUCCEEDED' | 'FAILED' | 'INTERRUPTED'; report_id?: string; error?: string }
+const jobLabels = { QUEUED: '排队中', RUNNING: '计算中', SUCCEEDED: '已完成', FAILED: '失败', INTERRUPTED: '已中断' }
 interface CostAllocation { source_batch_id?: string; procurement_batch_id: number; quantity: string | number; cost_batch_revision?: number; cost_currency: string; unit_purchase_cost: string; rate_date: string; rate: string | null; cost_cny_unrounded?: string }
 interface Detail { store_id: number; external_line_id: string; event: string; original_amount: string; currency: string; original_purchase_cost: string; cost_currency: string; revenue_rate_date: string; revenue_rate: string | null; cost_rate_date: string; cost_rate: string | null; margin_cny_unrounded?: string; complete: boolean; source_row_id: number; procurement_batch_id: number; cost_allocations?: CostAllocation[] }
 interface Result { complete: boolean; event_count: number; priced_event_count: number; sales_net_cny: string; refunds_cny: string; procurement_cost_cny: string; returned_cost_cny: string; known_margin_cny: string; gross_margin_cny: string | null; details: Detail[]; products: { internal_sku: string; known_margin_cny: string }[] }
@@ -15,6 +17,7 @@ export default function MarginReports({ store, stores, onSessionExpired }: { sto
   const base = `/v2/stores/${store.id}`
   const [sets, setSets] = useState<FxSet[]>([]), [rateSet, setRateSet] = useState(''), [rates, setRates] = useState<FxRate[]>([])
   const [history, setHistory] = useState<History[]>([]), [report, setReport] = useState<Report | null>(null)
+  const [job, setJob] = useState<MarginJob | null>(null)
   const [selected, setSelected] = useState<number[]>([store.id])
   const [start, setStart] = useState(new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10)), [end, setEnd] = useState(new Date().toISOString().slice(0, 10))
   const [source, setSource] = useState(''), [revision, setRevision] = useState(''), [rateText, setRateText] = useState('')
@@ -40,6 +43,14 @@ export default function MarginReports({ store, stores, onSessionExpired }: { sto
     setReport(null); setDetailPage(0)
     const saved = await request<Report>(`/v2/margin-reports/${id}`, { signal }); if (!signal.aborted) setReport(saved)
   }
+  async function showJob(next: MarginJob, signal: AbortSignal) {
+    if (signal.aborted) return
+    setJob(next)
+    if (next.report_id) {
+      await refresh(signal)
+      await open(next.report_id, signal)
+    }
+  }
   return <section className="source-history">
     <div className="section-heading"><div><h2>人民币销售毛利报表</h2><p>按付款日确认销售、退款确认日冲减收入，采购成本按批次入库日折算；仅确认退货入库时转回成本。</p></div><button className="quiet-button" disabled={busy} onClick={() => void run(refresh)}>刷新汇率与历史</button></div>
     {error && <p className="error-message" role="alert">{error}</p>}{notice && <p role="status">{notice}</p>}{busy && <p role="status">正在处理…</p>}
@@ -59,10 +70,8 @@ export default function MarginReports({ store, stores, onSessionExpired }: { sto
       </form>
     </details>
     <form onSubmit={event => { event.preventDefault(); void run(async signal => {
-      setReport(null)
-      const created = await request<Report>('/v2/margin-reports', { method: 'POST', body: JSON.stringify({ store_ids: selected, fx_rate_set_id: Number(rateSet), start, end, ...(fixed ? { fixed_rate_date: fixedDate } : {}) }), signal })
-      if (signal.aborted) return
-      setReport(created); setNotice(`报表 ${created.id} 已保存。`); await refresh(signal); await open(created.id, signal)
+      const created = await request<MarginJob>('/v2/margin-report-jobs', { method: 'POST', body: JSON.stringify({ store_ids: selected, fx_rate_set_id: Number(rateSet), start, end, ...(fixed ? { fixed_rate_date: fixedDate } : {}) }), signal })
+      await showJob(created, signal)
     }) }}>
       <fieldset disabled={busy}><legend>同一卖家的目标店铺</legend>{stores.filter(candidate => candidate.owner_id === store.owner_id).map(candidate => <label key={candidate.id} className="margin-store"><input type="checkbox" checked={selected.includes(candidate.id)} onChange={event => setSelected(previous => event.target.checked ? [...previous, candidate.id] : previous.filter(id => id !== candidate.id))} />{candidate.name} · {candidate.platform}</label>)}</fieldset>
       <div className="java-query-form">
@@ -72,6 +81,15 @@ export default function MarginReports({ store, stores, onSessionExpired }: { sto
       <label className="margin-store"><input type="checkbox" checked={fixed} disabled={busy} onChange={event => setFixed(event.target.checked)} />使用固定日期汇率折算销售、退款与采购成本</label>
       {fixed && <label>固定汇率日期<input type="date" required value={fixedDate} disabled={busy} onChange={event => setFixedDate(event.target.value)} /></label>}
     </form>
+    {job && <div>
+      <p role="status">报表任务 {jobLabels[job.status]}{job.error ? `（${job.error}）` : ''}</p>
+      <button className="quiet-button" disabled={busy} onClick={() => void run(async signal => {
+        await showJob(await request<MarginJob>(`/v2/margin-report-jobs/${job.id}`, { signal }), signal)
+      })}>刷新任务状态</button>
+      {(job.status === 'FAILED' || job.status === 'INTERRUPTED') && <button className="quiet-button" disabled={busy} onClick={() => void run(async signal => {
+        await showJob(await request<MarginJob>(`/v2/margin-report-jobs/${job.id}/retry`, { method: 'POST', signal }), signal)
+      })}>重试报表任务</button>}
+    </div>}
     <p className="hint">日期区间左闭右开，最多 20 家店、366 天、10000 条销售/退款事件。当前只匹配业务日期当天汇率；缺失记录保留原币并不计入已定价小计。</p>
     {rates.length > 0 && <details><summary>查看当前所选汇率依据（{rates.length} 条）</summary><div className="java-table-scroll"><table><thead><tr><th>原币</th><th>有效日</th><th>1 单位原币折人民币</th></tr></thead><tbody>{rates.map(rate => <tr key={`${rate.base_currency}:${rate.effective_date}`}><td>{rate.base_currency}</td><td>{rate.effective_date}</td><td>{rate.rate}</td></tr>)}</tbody></table></div></details>}
     <h3>包含当前店铺的最近 50 份可访问报表</h3><div className="java-table-scroll"><table><thead><tr><th>生成时间（UTC）</th><th>期间</th><th>状态</th><th>人民币毛利 / 已定价小计</th><th>查看</th></tr></thead><tbody>{history.map(item => <tr key={item.id}><td>{item.created_at}</td><td>{item.start_date} 至 {item.end_date}（不含）</td><td>{item.complete ? '完整定价' : '汇率不完整'}</td><td>{item.known_margin_cny}</td><td><button className="quiet-button" disabled={busy} onClick={() => void run(signal => open(item.id, signal))}>打开报表</button></td></tr>)}</tbody></table></div>

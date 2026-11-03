@@ -15,9 +15,10 @@ test('毛利报表界面：跨店选择、缺汇率提示和历史复算',async(
     else if(p==='/api/stores')body=[{id:1,name:'Store A',owner_id:1,platform:'market-a',source_store_key:'a'},{id:2,name:'Store B',owner_id:1,platform:'market-b',source_store_key:'b'},{id:3,name:'Other seller',owner_id:2,platform:'market-a',source_store_key:'c'}]
     else if(p.endsWith('/fx-rate-sets'))body=[fx]
     else if(p.endsWith('/fx-rate-sets/1'))body={rates:[{base_currency:'USD',effective_date:'2026-11-01',rate:'7.00'}]}
-    else if(p==='/api/v2/margin-reports'&&route.request().method()==='POST'){
-      const query=route.request().postDataJSON();expect(query.store_ids).toEqual([1,2]);if(query.fixed_rate_date){expect(query.fixed_rate_date).toBe('2026-11-02');fixedSubmitted=true}created=true;body=saved
-    }else if(p==='/api/v2/margin-reports')body=created?(revaluations?['report-2','report-1']:['report-1']).map(id=>({id,start_date:'2026-11-01',end_date:'2026-11-03',complete:false,known_margin_cny:'70.80',created_at:'2026-11-02T12:00Z'})):[]
+    else if(p==='/api/v2/margin-report-jobs'&&route.request().method()==='POST'){
+      const query=route.request().postDataJSON();expect(query.store_ids).toEqual([1,2]);if(query.fixed_rate_date){expect(query.fixed_rate_date).toBe('2026-11-02');fixedSubmitted=true}created=true;body={id:"job-1",status:"QUEUED"}
+    }else if(p==='/api/v2/margin-report-jobs/job-1')body={id:'job-1',status:'SUCCEEDED',report_id:'report-1'}
+    else if(p==='/api/v2/margin-reports')body=created?(revaluations?['report-2','report-1']:['report-1']).map(id=>({id,start_date:'2026-11-01',end_date:'2026-11-03',complete:false,known_margin_cny:'70.80',created_at:'2026-11-02T12:00Z'})):[]
     else if(p.endsWith('/compare')){await route.fulfill({status:422,json:{detail:'报表存在未定价事件，不能分解完整毛利差额'}});return}
     else if(p.endsWith('/recompute')){recomputed++;body=result}
     else if(p.endsWith('/revalue-costs')){revaluations++;body={id:'report-2',result}}
@@ -34,6 +35,8 @@ test('毛利报表界面：跨店选择、缺汇率提示和历史复算',async(
   await page.getByLabel('历史汇率版本',{exact:true}).selectOption('1')
   await expect(page.getByRole('button',{name:'生成并保存毛利报表'})).toBeEnabled()
   await page.getByRole('button',{name:'生成并保存毛利报表'}).click()
+  await expect(page.getByText('报表任务 排队中',{exact:true})).toBeVisible()
+  await page.getByRole('button',{name:'刷新任务状态'}).click()
   await expect(page.getByText('汇率不完整，已定价毛利小计：70.80 元；完整销售毛利暂不可用。',{exact:true})).toBeVisible()
   await expect(page.getByRole('cell',{name:'未定价',exact:true})).toBeVisible()
   await page.getByText('B-1 · 来源行 #9 · 采购批次分配（2 笔）',{exact:true}).click()
@@ -47,6 +50,8 @@ test('毛利报表界面：跨店选择、缺汇率提示和历史复算',async(
   await page.getByRole('checkbox',{name:'使用固定日期汇率折算销售、退款与采购成本'}).check()
   await page.getByLabel('固定汇率日期',{exact:true}).fill('2026-11-02')
   await page.getByRole('button',{name:'生成并保存毛利报表'}).click()
+  await expect(page.getByText('报表任务 排队中',{exact:true})).toBeVisible()
+  await page.getByRole('button',{name:'刷新任务状态'}).click()
   await expect(page.getByRole('heading',{name:'报表 report-1',exact:true})).toBeVisible();expect(fixedSubmitted).toBe(true)
   await page.getByLabel('基准报表',{exact:true}).selectOption('report-1');await page.getByLabel('目标报表',{exact:true}).selectOption('report-1')
   await page.getByRole('button',{name:'计算报表差额'}).click()
